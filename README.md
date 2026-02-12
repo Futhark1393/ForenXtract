@@ -37,16 +37,19 @@ cat secret_evidence.txt
 ### 2. Run the Acquisition
 1. Launch `python3 main_qt6.py` on your local machine.
 2. Enter the **Case Number** (e.g., `2026-FINAL-001`) and your name.
-3. Fill in the server details (IP: `51.20.74.168`, Disk: `/dev/nvme0n1`) and click **"Take Image and Analyze"**.
+3. Fill in the server details and click **"Take Image and Analyze"**.
 
-### 3. Verify and Find the Evidence
-Once the acquisition is complete, use the following forensic commands in your terminal to find the hidden data:
+### 3. Verify, Protect, and Find the Evidence
+Once the acquisition is complete, follow these forensic steps to secure and verify your evidence:
 
 ```bash
-# List the acquired file (It will be read-only)
-ls -l evidence_*.img.gz
+# 1. Apply Write Protection (Lock the evidence)
+chmod 444 evidence_*.img.gz
 
-# Forensic search for the 'secret' keyword inside the compressed image
+# 2. Verify Integrity (Check the Digital Seal)
+sha256sum evidence_*.img.gz
+
+# 3. Forensic search for the 'secret' keyword inside the locked image
 zgrep -a "SECRET_EVIDENCE" evidence_*.img.gz
 ```
 
