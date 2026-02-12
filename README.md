@@ -1,73 +1,59 @@
-# 🕵️‍♂️ Remote Forensic Imager
+# 🕵️‍♂️ Remote Forensic Imager - Professional Edition
 
-**Remote Forensic Imager** is a specialized digital forensics tool designed to acquire full disk images from remote cloud servers (AWS EC2, VPS, etc.) securely and efficiently.
+**Remote Forensic Imager** is a professional-grade digital forensics tool designed to acquire full disk images from remote cloud servers (AWS EC2, VPS, etc.) with high integrity and automated reporting.
 
-Developed with **Python** and **PyQt6**, this tool allows forensic examiners to perform live data acquisition over an encrypted SSH tunnel without modifying the evidence on the target system.
+Developed with **Python** and **PyQt6**, this tool follows forensic best practices to ensure a secure **Chain of Custody (CoC)**.
 
 ![GUI Preview](screenshots/gui_preview.png)
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-yellow.svg)
-![Platform](https://img.shields.io/badge/platform-Linux-green.svg)
-
 ## 🚀 Key Features
 
-* **GUI Based:** User-friendly interface powered by PyQt6.
-* **Secure Acquisition:** Uses `SSH` tunneling for end-to-end encrypted data transfer.
-* **Live Imaging:** Captures volatile data using `dd` with on-the-fly `gzip` compression to optimize network bandwidth.
-* **Safe Mode:** Implements `conv=noerror,sync` to handle bad sectors without stopping the acquisition process.
-* **Zip Bomb Analysis:** Includes a post-acquisition analysis thread to detect potential "Zip Bomb" anomalies in the acquired image.
-* **Hacker-Style Logging:** Real-time, terminal-style operation logs.
+* **Advanced Logging:** Captures acquisition start/end times, total duration, and remote IP logs.
+* [cite_start]**Security Verification:** Automatically fetches and logs the **Remote SSH Fingerprint** to ensure a secure connection[cite: 3].
+* [cite_start]**Automated Forensic Reporting:** Generates a detailed `.txt` report including a **Chain of Custody** table, full command history, and SHA-256 hash values[cite: 3, 71].
+* [cite_start]**Safe Mode:** Implements `conv=noerror,sync` to handle disk bad sectors without compromising the image[cite: 17, 55].
+* [cite_start]**Integrity Protection:** Encourages write-blocking with `chmod 444` and performs post-acquisition hash verification[cite: 35, 40].
 
-## 🛠️ Requirements
+## 🛡️ Automated Forensic Reporting & Chain of Custody
 
-* **Operating System:** Linux (Fedora, Ubuntu, Kali, etc.) - *Recommended for native SSH tools.*
-* **Python:** Version 3.x
-* **Dependencies:** PyQt6
+The most critical feature for academic and legal standards is the automated reporting system. Each session produces a comprehensive log that serves as a digital seal for the evidence.
 
-## 📦 Installation
 
-1.  **Clone the Repository**
-    ```bash
-    git clone [https://github.com/Futhark1393/Remote-Forensic-Imager.git](https://github.com/Futhark1393/Remote-Forensic-Imager.git)
-    cd Remote-Forensic-Imager
-    ```
 
-2.  **Install Dependencies**
-    ```bash
-    pip install PyQt6
-    ```
+![Automated Report](screenshots/automated_report.png)
+*Figure: Automated Forensic Report including Case Info, Timestamps, and Chain of Custody (CoC).*
 
 ## 📖 Usage
 
-1.  **Launch the Application**
-    ```bash
-    python3 main.py
-    ```
+1.  [cite_start]**Launch the Application:** `python3 main_qt6.py` [cite: 15]
+2.  [cite_start]**Enter Case Info:** Fill in **Case Number** and **Examiner Name** for the official report[cite: 3].
+3.  **Configure Target:**
+    * [cite_start]**Server IP:** Target's public IP (e.g., 51.20.74.168)[cite: 11].
+    * [cite_start]**User/Key:** SSH credentials (e.g., `ubuntu` and `.pem` file)[cite: 20, 21].
+    * [cite_start]**Disk:** Target block device (e.g., `/dev/nvme0n1` for AWS Nitro)[cite: 12].
+4.  [cite_start]**Acquisition:** Click **"Take Image and Analyze"**[cite: 24, 65]. [cite_start]The tool will stream the disk and automatically generate a SHA-256 hash and a Forensic Report[cite: 35, 59].
 
-2.  **Configure Parameters**
-    * **Server IP:** The public IP address of the target machine (e.g., AWS EC2 IP).
-    * **User:** The SSH username (e.g., `ubuntu`, `ec2-user`, `root`).
-    * **SSH Key:** Select your `.pem` private key file.
-    * **Disk:** The target disk identifier (e.g., `/dev/nvme0n1` for AWS Nitro instances or `/dev/xvda`).
+## 🛠️ Verification & Analysis
 
-3.  **Start Acquisition**
-    * Click **"Start Acquisition & Analyze"**.
-    * The tool will establish a connection, stream the disk image to your local machine, and save it as `evidence_YYYYMMDD_HHMMSS.img.gz`.
+After acquisition, the tool supports manual verification to ensure the data is intact:
 
-## 🛡️ Forensic Methodology & Verification
+```bash
+# Verify Integrity
+[cite_start]sha256sum evidence_*.img.gz [cite: 35, 39]
 
-This tool adheres to the **RFC 3227** guidelines for evidence collection:
-1.  **Minimization:** Minimal footprint on the target system (uses standard system binaries: `dd`, `gzip`).
-2.  **Integrity:** Data is transferred via a secure channel.
-3.  **Verification:** Automatically suggests hashing the output file post-acquisition.
+# Apply Write Protection
+[cite_start]chmod 444 evidence_*.img.gz [cite: 40]
+
+# Forensic Keyword Search (Analysis without mounting)
+[cite_start]zgrep -a "KEYWORD" evidence_*.img.gz [cite: 41]
+```
 
 ![Verification Proof](screenshots/terminal_proof.png)
-*Figure: SHA-256 Hashing, Write-Blocking, and Content Verification.*
+*Figure: Manual verification and content discovery within the acquired image.*
 
 ## ⚠️ Disclaimer
 
-This tool is intended for **educational purposes** and **authorized forensic investigations** only. The author (Futhark) is not responsible for any misuse or damage caused by this software. Always ensure you have proper authorization before accessing remote systems.
+This tool is intended for **authorized forensic investigations** only. The developer (**Futhark**) is not responsible for any unauthorized use.
 
 ---
 
