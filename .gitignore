@@ -18,3 +18,12 @@ venv/
 
 # İşletim Sistemi Dosyaları
 .DS_Store
+
+# Forensic Reports
+Report_*.txt
+*.log
+
+# Evidence Images
+evidence_*
+*.img.gz
+*.dd
