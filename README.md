@@ -4,6 +4,8 @@
 
 Developed with **Python** and **PyQt6**, this tool allows forensic examiners to perform live data acquisition over an encrypted SSH tunnel without modifying the evidence on the target system.
 
+![GUI Preview](screenshots/gui_preview.png)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-yellow.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux-green.svg)
@@ -53,12 +55,15 @@ Developed with **Python** and **PyQt6**, this tool allows forensic examiners to 
     * Click **"Start Acquisition & Analyze"**.
     * The tool will establish a connection, stream the disk image to your local machine, and save it as `evidence_YYYYMMDD_HHMMSS.img.gz`.
 
-## 🛡️ Forensic Methodology
+## 🛡️ Forensic Methodology & Verification
 
 This tool adheres to the **RFC 3227** guidelines for evidence collection:
 1.  **Minimization:** Minimal footprint on the target system (uses standard system binaries: `dd`, `gzip`).
 2.  **Integrity:** Data is transferred via a secure channel.
 3.  **Verification:** Automatically suggests hashing the output file post-acquisition.
+
+![Verification Proof](screenshots/terminal_proof.png)
+*Figure: SHA-256 Hashing, Write-Blocking, and Content Verification.*
 
 ## ⚠️ Disclaimer
 
