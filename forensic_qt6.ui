@@ -136,6 +136,13 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="chk_triage">
+          <property name="text">
+           <string>Run Live Triage (Fast Recon)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QCheckBox" name="chk_throttle">
           <property name="text">
            <string>Limit Bandwidth</string>
