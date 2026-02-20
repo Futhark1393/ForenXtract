@@ -14,155 +14,158 @@
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QLineEdit" name="txt_caseno">
-    <property name="geometry">
-     <rect>
-      <x>11</x>
-      <y>2</y>
-      <width>381</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>Case Number (e.g., 2026-001)</string>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="txt_examiner">
-    <property name="geometry">
-     <rect>
-      <x>402</x>
-      <y>2</y>
-      <width>381</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>Examiner Name (e.g., Kemal Futhark)</string>
-    </property>
-   </widget>
-   <widget class="QTextEdit" name="txt_log">
-    <property name="geometry">
-     <rect>
-      <x>212</x>
-      <y>37</y>
-      <width>571</width>
-      <height>461</height>
-     </rect>
-    </property>
-    <property name="readOnly">
-     <bool>true</bool>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="txt_ip">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>38</y>
-      <width>142</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>Server IP</string>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="txt_user">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>100</y>
-      <width>142</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>Username</string>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="txt_key">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>163</y>
-      <width>142</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>SSH Key</string>
-    </property>
-   </widget>
-   <widget class="QToolButton" name="btn_file">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>225</y>
-      <width>29</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <property name="maximumSize">
-     <size>
-      <width>29</width>
-      <height>26</height>
-     </size>
-    </property>
-    <property name="text">
-     <string>...</string>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="txt_disk">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>287</y>
-      <width>142</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="placeholderText">
-     <string>Disk Name:</string>
-    </property>
-   </widget>
-   <widget class="QCheckBox" name="chk_safety">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>349</y>
-      <width>101</width>
-      <height>24</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Safe Mode</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="btn_start">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>409</y>
-      <width>187</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Take Image and Analyze</string>
-    </property>
-   </widget>
-   <widget class="QProgressBar" name="progressBar">
-    <property name="geometry">
-     <rect>
-      <x>12</x>
-      <y>471</y>
-      <width>99</width>
-      <height>27</height>
-     </rect>
-    </property>
-    <property name="value">
-     <number>24</number>
-    </property>
-   </widget>
+   <layout class="QVBoxLayout" name="verticalLayout_2">
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QLineEdit" name="txt_caseno">
+        <property name="placeholderText">
+         <string>Case Number (e.g., 2026-001)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="txt_examiner">
+        <property name="placeholderText">
+         <string>Examiner Name (e.g., Kemal Futhark)</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="1,3">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QLineEdit" name="txt_ip">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>Server IP</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="txt_user">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>Username</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="txt_key">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>SSH Key</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btn_file">
+          <property name="maximumSize">
+           <size>
+            <width>29</width>
+            <height>26</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="txt_disk">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>Disk Name:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="chk_safety">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Safe Mode</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="chk_writeblock">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Enable Write Blocker</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_start">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Take Image and Analyze</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QProgressBar" name="progressBar">
+          <property name="maximumSize">
+           <size>
+            <width>250</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="value">
+           <number>24</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="txt_log">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -170,7 +173,7 @@
      <x>0</x>
      <y>0</y>
      <width>799</width>
-     <height>24</height>
+     <height>30</height>
     </rect>
    </property>
   </widget>
