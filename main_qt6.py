@@ -2,6 +2,7 @@ import sys
 import os
 import subprocess
 import time
+import shutil
 from datetime import datetime
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 from PyQt6.uic import loadUi
@@ -15,7 +16,7 @@ class AcquisitionThread(QThread):
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str, dict)
 
-    def __init__(self, ip, user, key, disk, safe_mode, write_block, is_ram):
+    def __init__(self, ip, user, key, disk, safe_mode, write_block, is_ram, throttle_limit=None):
         super().__init__()
         self.ip = ip
         self.user = user
@@ -24,6 +25,7 @@ class AcquisitionThread(QThread):
         self.safe_mode = safe_mode
         self.write_block = write_block
         self.is_ram = is_ram
+        self.throttle_limit = throttle_limit
         self.start_time = None
         self.end_time = None
         self.bad_sector_logs = []
@@ -50,9 +52,11 @@ class AcquisitionThread(QThread):
         mode_str = "Read-Only" if state else "Read-Write"
 
         try:
+            # Send lock/unlock command
             cmd_lock = f"ssh -o StrictHostKeyChecking=no -i {self.key} {self.user}@{self.ip} 'sudo blockdev {mode} {self.disk}'"
             subprocess.check_call(cmd_lock, shell=True)
 
+            # Verify the status
             cmd_check = f"ssh -o StrictHostKeyChecking=no -i {self.key} {self.user}@{self.ip} 'sudo blockdev --getro {self.disk}'"
             result = subprocess.check_output(cmd_check, shell=True).decode().strip()
 
@@ -80,6 +84,7 @@ class AcquisitionThread(QThread):
             "bad_sectors": []
         }
 
+        # Flag to track write blocker status for the finally block
         wb_activated = False
 
         try:
@@ -116,6 +121,7 @@ class AcquisitionThread(QThread):
             else:
                 report_data["write_protection"] = "Disabled (Live System Mode)"
 
+            # --- SAFE EXECUTION BLOCK ---
             try:
                 # 4. Prepare Acquisition Command
                 dd_flags = "conv=noerror,sync" if self.safe_mode else ""
@@ -126,17 +132,36 @@ class AcquisitionThread(QThread):
                 ]
 
                 full_command_str = " ".join(ssh_cmd)
+
+                # Setup Throttling if requested and pv is available
+                use_throttling = False
+                if self.throttle_limit and shutil.which("pv"):
+                    use_throttling = True
+                    throttle_cmd = ["pv", "-q", "-L", f"{self.throttle_limit}m"]
+                    full_command_str += f" | pv -q -L {self.throttle_limit}m"
+                elif self.throttle_limit:
+                    self.log_signal.emit("[WARNING] 'pv' tool not found on local system. Throttling disabled.")
+
                 report_data["command_executed"] = full_command_str
 
                 self.log_signal.emit(f"[*] EXECUTING COMMAND:\n    {full_command_str}")
                 self.log_signal.emit("[*] Data stream started (Listening for I/O errors)...")
 
                 with open(self.filename, "wb") as f:
-                    process = subprocess.Popen(ssh_cmd, stdout=f, stderr=subprocess.PIPE)
+                    if use_throttling:
+                        # Pipe ssh output through pv to limit bandwidth
+                        p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        p2 = subprocess.Popen(throttle_cmd, stdin=p1.stdout, stdout=f)
+                        p1.stdout.close() # Allow p1 to receive a SIGPIPE if p2 exits
+                        process_to_monitor = p1
+                    else:
+                        # Direct output to file
+                        process_to_monitor = subprocess.Popen(ssh_cmd, stdout=f, stderr=subprocess.PIPE)
 
+                    # Monitor stderr for dd progress and errors
                     while True:
-                        line = process.stderr.readline()
-                        if not line and process.poll() is not None:
+                        line = process_to_monitor.stderr.readline()
+                        if not line and process_to_monitor.poll() is not None:
                             break
                         if line:
                             decoded_line = line.decode('utf-8', errors='ignore').strip()
@@ -146,20 +171,23 @@ class AcquisitionThread(QThread):
                                 self.bad_sector_logs.append(error_msg)
                                 self.log_signal.emit(error_msg)
 
+                    if use_throttling:
+                        p2.wait()
+
                 self.end_time = datetime.now()
                 duration = self.end_time - self.start_time
                 report_data["end_time"] = self.end_time.strftime("%Y-%m-%d %H:%M:%S")
                 report_data["duration"] = str(duration)
                 report_data["bad_sectors"] = self.bad_sector_logs
 
-                if process.returncode == 0:
+                if process_to_monitor.returncode == 0:
                     self.log_signal.emit(f"[SUCCESS] Transfer Complete. Duration: {duration}")
                     self.finished_signal.emit(True, self.filename, report_data)
                 else:
                     self.finished_signal.emit(True, self.filename, report_data)
 
             finally:
-                # 5. Lock Restoration
+                # 5. Lock Restoration (Cleanup)
                 if wb_activated:
                     self.log_signal.emit("[*] Reverting Write Blocker (Restoring Read-Write)...")
                     success, msg = self.set_write_block(False)
@@ -183,6 +211,7 @@ class AnalysisThread(QThread):
         self.filename = filename
 
     def calculate_hash(self):
+        """Calculates SHA-256 hash of the evidence file."""
         try:
             cmd = f"sha256sum {self.filename}"
             result = subprocess.check_output(cmd, shell=True).decode().strip()
@@ -229,6 +258,7 @@ class ForensicApp(QMainWindow):
 
         self.setWindowTitle("Remote Forensic Imager - Futhark1393")
         self.setup_terminal_style()
+        self.setup_tooltips() # UI Help tooltips initialized here
 
         self.btn_file.clicked.connect(self.select_key)
         self.btn_start.clicked.connect(self.start_process)
@@ -243,6 +273,7 @@ class ForensicApp(QMainWindow):
         self.last_report_data = {}
 
     def setup_terminal_style(self):
+        """Configures the QTextEdit to look like a terminal."""
         self.txt_log.setReadOnly(True)
         self.txt_log.setStyleSheet("""
             QTextEdit {
@@ -256,12 +287,42 @@ class ForensicApp(QMainWindow):
         self.log("--- SYSTEM READY ---")
         self.log("[*] Forensic Console Initialized.")
 
+    def setup_tooltips(self):
+        """Injects professional forensic tooltips to guide the examiner."""
+        if hasattr(self, 'txt_caseno'):
+            self.txt_caseno.setToolTip("Incident or Case Number. This will be logged in the final Chain of Custody (CoC) report.")
+        if hasattr(self, 'txt_examiner'):
+            self.txt_examiner.setToolTip("Name or ID of the Forensic Examiner conducting the acquisition.")
+        if hasattr(self, 'txt_ip'):
+            self.txt_ip.setToolTip("Target server's IPv4/IPv6 address or hostname.")
+        if hasattr(self, 'txt_user'):
+            self.txt_user.setToolTip("SSH Username. Must have sudo privileges to run 'dd' and 'blockdev'.")
+        if hasattr(self, 'txt_key'):
+            self.txt_key.setToolTip("Path to the private SSH key (.pem) for passwordless authentication.")
+        if hasattr(self, 'txt_disk'):
+            self.txt_disk.setToolTip("Target block device path (e.g., /dev/nvme0n1 or /dev/sda).")
+
+        if hasattr(self, 'chk_safety'):
+            self.chk_safety.setToolTip("Applies 'conv=noerror,sync' to dd. Prevents the acquisition from crashing on physical bad sectors.")
+        if hasattr(self, 'chk_ram'):
+            self.chk_ram.setToolTip("Overrides disk target to /proc/kcore for volatile memory (RAM) extraction. Bypasses Write Blocker.")
+        if hasattr(self, 'chk_writeblock'):
+            self.chk_writeblock.setToolTip("Kernel-level protection. Sets the target disk to Read-Only mode (blockdev --setro) before acquisition.")
+        if hasattr(self, 'chk_throttle'):
+            self.chk_throttle.setToolTip("Pipes the transfer through 'pv' to limit network bandwidth usage and prevent server bottlenecks.")
+        if hasattr(self, 'txt_throttle'):
+            self.txt_throttle.setToolTip("Bandwidth limit in Megabytes per second (MB/s). e.g., 10")
+        if hasattr(self, 'btn_start'):
+            self.btn_start.setToolTip("Start secure acquisition and post-process hashing.")
+
     def select_key(self):
+        """Opens a file dialog to select the SSH private key."""
         fname, _ = QFileDialog.getOpenFileName(self, "Select SSH Key", "", "PEM Files (*.pem);;All Files (*)")
         if fname:
             self.txt_key.setText(fname)
 
     def log(self, msg):
+        """Appends a message to the UI log and writes to the crash-proof log file."""
         self.txt_log.append(msg)
         cursor = self.txt_log.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -276,6 +337,7 @@ class ForensicApp(QMainWindow):
             pass
 
     def start_process(self):
+        """Validates inputs and starts the acquisition thread."""
         ip = self.txt_ip.text()
         user = self.txt_user.text()
         key = self.txt_key.text()
@@ -294,6 +356,12 @@ class ForensicApp(QMainWindow):
         if hasattr(self, 'chk_ram'):
              is_ram_status = self.chk_ram.isChecked()
 
+        # Check Bandwidth Throttling status
+        throttle_limit = None
+        if hasattr(self, 'chk_throttle') and self.chk_throttle.isChecked():
+            if hasattr(self, 'txt_throttle') and self.txt_throttle.text().isdigit():
+                throttle_limit = int(self.txt_throttle.text())
+
         # Force target to memory file if RAM mode is selected
         if is_ram_status:
              disk = "/proc/kcore"
@@ -306,15 +374,18 @@ class ForensicApp(QMainWindow):
         self.progressBar.setValue(5)
         self.log("\n--- [ STARTING FORENSIC ACQUISITION ] ---")
         self.log(f"[*] Case No: {self.case_no} | Examiner: {self.examiner}")
+        if throttle_limit:
+            self.log(f"[*] Bandwidth Limit: {throttle_limit} MB/s")
 
         safe_mode_status = self.chk_safety.isChecked() if hasattr(self, 'chk_safety') else False
 
-        self.worker = AcquisitionThread(ip, user, key, disk, safe_mode_status, write_block_status, is_ram_status)
+        self.worker = AcquisitionThread(ip, user, key, disk, safe_mode_status, write_block_status, is_ram_status, throttle_limit)
         self.worker.log_signal.connect(self.log)
         self.worker.finished_signal.connect(self.on_acquisition_finished)
         self.worker.start()
 
     def on_acquisition_finished(self, success, filename, report_data):
+        """Callback for when the acquisition thread completes."""
         self.last_report_data = report_data
 
         if success:
@@ -332,6 +403,7 @@ class ForensicApp(QMainWindow):
             self.progressBar.setValue(0)
 
     def on_analysis_finished(self, warning, file_hash):
+        """Callback for when the analysis thread completes."""
         self.progressBar.setValue(100)
         self.btn_start.setEnabled(True)
         self.generate_report(file_hash)
@@ -345,6 +417,7 @@ class ForensicApp(QMainWindow):
             QMessageBox.information(self, "Success", "Acquisition & Analysis Complete.\nReport Generated.")
 
     def generate_report(self, file_hash):
+        """Generates the final Chain of Custody (CoC) text report."""
         bad_sector_text = ""
         if self.last_report_data['bad_sectors']:
             bad_sector_text = "\n".join(self.last_report_data['bad_sectors'])
@@ -394,7 +467,7 @@ Integrity       : VERIFIED
 | {self.last_report_data['end_time']} | {self.examiner:<18} | Secure Storage   | Evidence Locking    |
 |                     |                    |                  |                     |
 ================================================================
-Note: Auto-generated by Remote Forensic Imager - Developed by Futhark
+Note: Auto-generated by Remote Forensic Imager - Developed by Futhark1393
 """
         report_filename = f"Report_{self.case_no}_{datetime.now().strftime('%Y%m%d')}.txt"
         with open(report_filename, "w") as f:

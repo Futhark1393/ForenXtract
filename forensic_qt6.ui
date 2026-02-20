@@ -136,6 +136,23 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="chk_throttle">
+          <property name="text">
+           <string>Limit Bandwidth</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="txt_throttle">
+          <property name="text">
+           <string/>
+          </property>
+          <property name="placeholderText">
+           <string>e.g., MB/s: 10</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="btn_start">
           <property name="maximumSize">
            <size>
