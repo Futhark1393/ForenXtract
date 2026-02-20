@@ -1,15 +1,14 @@
-cat <<EOF > .gitignore
-# AWS Anahtarları
+# AWS Keys
 *.pem
 *.key
 
-# Adli İmaj Dosyaları
+# Forensic Image Files
 *.img
 *.img.gz
 *.dd
 *.E01
 
-# Python Gereksizleri
+# Python Junk
 __pycache__/
 *.pyc
 .env
@@ -17,7 +16,7 @@ venv/
 .idea/
 .vscode/
 
-# İşletim Sistemi ve Editör Yedekleri
+# OS and Editor Backups
 .DS_Store
 *~
 *.swp
@@ -30,6 +29,6 @@ live_forensic.log
 
 # Evidence Images & Test Files
 evidence_*
+triage_evidence_*
 secret_evidence.txt
 evidence_file.txt
-EOF
