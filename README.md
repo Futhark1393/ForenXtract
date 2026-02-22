@@ -4,6 +4,8 @@
 
 Developed by **Futhark1393**, the tool automates the collection of bit-stream images while maintaining a strict **Chain of Custody (CoC)** and adhering to the **"Do No Harm"** forensic principle.
 
+![Main Interface](screenshots/gui_main.png)
+
 ## 🚀 Technical Capabilities
 
 * **Multiple Acquisition Formats:** Supports industry-standard **E01 (EnCase)** format with embedded metadata, as well as compressed RAW (`.img.gz`) formats via `libewf`.
@@ -16,6 +18,8 @@ Developed by **Futhark1393**, the tool automates the collection of bit-stream im
 * **Software Write Blocker:** Sets the target block device to **Read-Only (RO)** mode at the kernel level (`blockdev --setro`).
 * **Multi-Format Reporting:** Generates technical `.txt` logs and professional `.pdf` Executive Summaries with multi-language support (EN/TR).
 
+![Acquisition Process](screenshots/gui_acquisition.png)
+
 ---
 
 ## 🏗️ Modular Architecture
@@ -25,6 +29,18 @@ The tool is built with a highly modular structure to ensure stability and future
 * `codes/gui.py`: Manages the PyQt6 interface, user interactions, directory selection, and PDF reporting engine.
 * `codes/acquisition.py`: Handles SSH tunneling, `dd` streaming, E01 stream encapsulation, bandwidth throttling, and Triage execution.
 * `codes/analysis.py`: Performs post-acquisition tasks like SHA-256/MD5 hashing and binary header analysis.
+
+---
+
+## 🔥 Proof of Concept: Data Carving & Bit-Stream Accuracy
+
+To verify that the tool performs a true physical (bit-stream) acquisition rather than just a logical file copy, a test was conducted on a 100MB AWS EC2 partition (`/dev/nvme0n1p15`). 
+
+The resulting `.E01` image was analyzed using **Autopsy**. During the analysis of the **Unallocated Space**, fragments of historical Linux documentation (a 1999 email from GNU FSF founder Richard Stallman regarding Readline libraries) were successfully carved and recovered. 
+
+![Autopsy Data Carving](screenshots/autopsy_carving_body.png)
+
+This artifact confirms that the Remote Forensic Imager successfully captures raw sector data, including data remanence and deleted files in unallocated space, proving its 100% lossless physical acquisition capability over an encrypted SSH stream.
 
 ---
 
@@ -56,13 +72,15 @@ In digital forensics, the **Chain of Custody** is the documentation recording th
 2. **Preservation:** Enforces Read-Only modes and secures images with Dual-Hash signatures (SHA-256 & MD5) and E01 metadata embedding.
 3. **Documentation:** Automatically generates a CoC report mapping the transfer from the target to the examiner.
 
+![PDF Report Example](screenshots/pdf_report.png)
+
 > ⚖️ **NIST Compliance:** The acquisition methodology aligns with **NIST Special Publication 800-86** guidelines for verifiable data collection and cryptographic preservation.
 
 ---
 
 ## 🛠️ Environment & Installation
 
-* **OS:** Fedora Linux (KDE Plasma / GNOME)
+* **OS:** Fedora Linux 43 (KDE Plasma / GNOME)
 * **Language:** Python 3.10+
 * **Dependencies:** `PyQt6`, `fpdf2`, `pv`, `libewf`
 
