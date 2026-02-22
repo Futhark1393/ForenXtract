@@ -80,18 +80,40 @@ In digital forensics, the **Chain of Custody** is the documentation recording th
 
 ## 🛠️ Environment & Installation
 
-* **OS:** Fedora Linux 43 (KDE Plasma / GNOME)
+* **Supported OS:** Fedora Linux 43 (KDE Plasma), Ubuntu, CAINE, and other major Linux distributions.
 * **Language:** Python 3.10+
 * **Dependencies:** `PyQt6`, `fpdf2`, `pv`, `libewf`
 
+### 1. Clone the Repository
+Download the tool to your local forensic workstation:
 ```bash
-# Install system dependencies for bandwidth throttling and E01 support (Fedora)
+git clone [https://github.com/Futhark1393/Remote-Forensic-Imager.git](https://github.com/Futhark1393/Remote-Forensic-Imager.git)
+cd Remote-Forensic-Imager
+```
+
+### 2. Install System Dependencies
+The tool requires `pv` for bandwidth throttling and `ewf-tools` for E01 format support.
+
+**For Fedora / RHEL:**
+```bash
 sudo dnf install pv libewf-tools
+```
 
-# Install Python dependencies
+**For Ubuntu / Debian / CAINE:**
+```bash
+sudo apt update
+sudo apt install pv ewf-tools
+```
+
+### 3. Install Python Dependencies
+It is recommended to use a virtual environment or install directly via pip:
+```bash
 pip install PyQt6 fpdf2
+```
 
-# Run the application
+### 4. Launch the Console
+Run the main Python script to initialize the GUI:
+```bash
 python3 main_qt6.py
 ```
 
