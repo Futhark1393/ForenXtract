@@ -19,6 +19,22 @@ The v2.0 release completely overhauls the acquisition engine, transitioning from
 
 ---
 
+## 🔥 Proof of Concept: Data Carving & Bit-Stream Accuracy
+
+To verify that the tool performs a true physical (bit-stream) acquisition rather than just a logical file copy, a test was conducted on a 100MB AWS EC2 partition (`/dev/nvme0n1p15`). 
+
+The resulting image was analyzed using **Autopsy**. During the analysis of the **Unallocated Space**, fragments of historical Linux documentation (a 1999 email from GNU FSF founder Richard Stallman regarding Readline libraries) were successfully carved and recovered. 
+
+**Carved Header Data:**
+![Autopsy Data Carving Header](screenshots/autopsy_carving_header.png)
+
+**Carved Body Text:**
+![Autopsy Data Carving Body](screenshots/autopsy_carving_body.png)
+
+This artifact confirms that the Remote Forensic Imager successfully captures raw sector data, including data remanence and deleted files in unallocated space, proving its 100% lossless physical acquisition capability over an encrypted SSH stream.
+
+---
+
 ## 🏗️ Modular Architecture
 
 The tool is built with a highly decoupled structure:
@@ -45,11 +61,10 @@ The tool is built with a highly decoupled structure:
 * **Language:** Python 3.10+
 * **Dependencies:** `PyQt6`, `fpdf2`, `paramiko`
 
-### 1. Clone the Repository & Switch to v2 Branch
+### 1. Clone the Repository
 ```bash
 git clone [https://github.com/Futhark1393/Remote-Forensic-Imager.git](https://github.com/Futhark1393/Remote-Forensic-Imager.git)
 cd Remote-Forensic-Imager
-git checkout v2-development
 ```
 
 ### 2. Install Python Dependencies
