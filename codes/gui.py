@@ -1,21 +1,129 @@
 # Author: Futhark1393
 # Description: Main GUI module for Remote Forensic Imager.
-# Features: Paramiko integration, E01/RAW chunk-streaming, on-the-fly hashing, ETA, throttling, Safe Mode, and Live Triage.
+# Features: Case Wizard workflow, structured forensic logging, secure acquisition orchestration,
+#          optional write-blocker, post-acq verification, and report generation.
 
 import sys
 import os
-import subprocess
-from datetime import datetime
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QMessageBox, QApplication
+import re
+import paramiko
+from datetime import datetime, timezone
+
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QFileDialog,
+    QMessageBox,
+    QApplication,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QFormLayout,
+)
 from PyQt6.uic import loadUi
 from PyQt6.QtGui import QTextCursor
-from fpdf import FPDF
 from qt_material import apply_stylesheet
 
+from codes.dependency_checker import run_dependency_check
+from codes.logger import ForensicLogger, ForensicLoggerError
+from codes.report_engine import ReportEngine
 from codes.threads import AcquisitionWorker
 
+
+class CaseWizard(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Create / Open Case")
+
+        self._case_no = ""
+        self._examiner = ""
+        self._evidence_dir = ""
+
+        root = QVBoxLayout(self)
+
+        header = QLabel("Case Initialization")
+        header.setStyleSheet("font-size: 14pt; font-weight: 600;")
+        root.addWidget(header)
+
+        form = QFormLayout()
+        self.case_no_edit = QLineEdit()
+        self.case_no_edit.setPlaceholderText("e.g., 2026-001")
+        self.examiner_edit = QLineEdit()
+        self.examiner_edit.setPlaceholderText("Lead Investigator Name")
+        form.addRow(QLabel("Case Number:"), self.case_no_edit)
+        form.addRow(QLabel("Examiner:"), self.examiner_edit)
+        root.addLayout(form)
+
+        dir_row = QHBoxLayout()
+        self.dir_edit = QLineEdit()
+        self.dir_edit.setPlaceholderText("Select evidence output directory")
+        self.dir_btn = QPushButton("Browse...")
+        self.dir_btn.clicked.connect(self._pick_dir)
+        dir_row.addWidget(self.dir_edit)
+        dir_row.addWidget(self.dir_btn)
+        root.addWidget(QLabel("Evidence Directory:"))
+        root.addLayout(dir_row)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        self.cancel_btn = QPushButton("Cancel")
+        self.start_btn = QPushButton("Start Investigation")
+        self.cancel_btn.clicked.connect(self.reject)
+        self.start_btn.clicked.connect(self._validate_and_accept)
+        btn_row.addWidget(self.cancel_btn)
+        btn_row.addWidget(self.start_btn)
+        root.addLayout(btn_row)
+
+        self.setMinimumWidth(520)
+
+    def _pick_dir(self):
+        selected_dir = QFileDialog.getExistingDirectory(self, "Select Evidence Directory")
+        if selected_dir:
+            self.dir_edit.setText(selected_dir)
+
+    def _validate_and_accept(self):
+        case_no = self.case_no_edit.text().strip()
+        examiner = self.examiner_edit.text().strip()
+        evidence_dir = self.dir_edit.text().strip()
+
+        if not case_no:
+            QMessageBox.warning(self, "Validation Error", "Case Number is required.")
+            return
+        if not examiner:
+            QMessageBox.warning(self, "Validation Error", "Examiner is required.")
+            return
+        if not evidence_dir:
+            QMessageBox.warning(self, "Validation Error", "Evidence Directory is required.")
+            return
+        if not os.path.isdir(evidence_dir):
+            QMessageBox.warning(self, "Validation Error", "Evidence Directory does not exist.")
+            return
+        if not os.access(evidence_dir, os.W_OK):
+            QMessageBox.warning(self, "Validation Error", "Evidence Directory is not writable.")
+            return
+
+        self._case_no = case_no
+        self._examiner = examiner
+        self._evidence_dir = evidence_dir
+        self.accept()
+
+    @property
+    def case_no(self) -> str:
+        return self._case_no
+
+    @property
+    def examiner(self) -> str:
+        return self._examiner
+
+    @property
+    def evidence_dir(self) -> str:
+        return self._evidence_dir
+
+
 class ForensicApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, case_no: str, examiner: str, evidence_dir: str):
         super().__init__()
         try:
             loadUi("forensic_qt6.ui", self)
@@ -24,6 +132,18 @@ class ForensicApp(QMainWindow):
             sys.exit(1)
 
         self.setWindowTitle("Remote Forensic Imager")
+
+        self.logger = ForensicLogger()
+        self.output_dir = evidence_dir
+
+        try:
+            self.logger.set_context(case_no, examiner, self.output_dir)
+            self.case_no = self.logger.case_no
+            self.examiner = self.logger.examiner
+        except ForensicLoggerError as e:
+            QMessageBox.critical(self, "Critical Audit Failure", f"Could not initialize Audit Trail.\n\nError: {e}")
+            sys.exit(1)
+
         self.setup_terminal_style()
         self.setup_tooltips()
 
@@ -31,46 +151,34 @@ class ForensicApp(QMainWindow):
         self.btn_start.clicked.connect(self.start_process)
         self.btn_stop.clicked.connect(self.stop_process)
 
-        if hasattr(self, 'btn_discover'):
+        if hasattr(self, "btn_discover"):
             self.btn_discover.clicked.connect(self.discover_disks)
 
-        self.txt_user.setText("ubuntu")
+        if hasattr(self, "txt_caseno"):
+            self.txt_caseno.setText(self.case_no)
+            self.txt_caseno.setReadOnly(True)
+        if hasattr(self, "txt_examiner"):
+            self.txt_examiner.setText(self.examiner)
+            self.txt_examiner.setReadOnly(True)
 
-        if hasattr(self, 'cmb_disk'):
-            self.cmb_disk.lineEdit().setPlaceholderText("e.g., /dev/nvme0n1")
+        if hasattr(self, "txt_user"):
+            self.txt_user.setText("ubuntu")
 
-        if hasattr(self, 'chk_safety'):
+        if hasattr(self, "chk_safety"):
             self.chk_safety.setChecked(True)
+        if hasattr(self, "chk_verify"):
+            self.chk_verify.setChecked(True)
 
         self.progressBar.setValue(0)
-        self.output_dir = ""
         self.worker = None
         self.start_time = None
         self.format_type = "RAW"
         self.target_filename = ""
 
-        self.report_labels = {
-            "title": "DIGITAL FORENSIC ACQUISITION REPORT",
-            "case_details": "1. CASE DETAILS",
-            "case_no": "Case Number:",
-            "examiner": "Examiner:",
-            "date": "Date:",
-            "ip": "Target IP:",
-            "duration": "Duration:",
-            "integrity": "2. EVIDENCE INTEGRITY",
-            "hash_sha256": "SHA-256 HASH:",
-            "hash_md5": "MD5 HASH:",
-            "status": "Status: VERIFIED",
-            "triage": "3. PRE-ACQUISITION TRIAGE",
-            "triage_log": "Live Triage Log:",
-            "error_check": "Physical Error Check:",
-            "summary_title": "EXECUTIVE SUMMARY",
-            "summary_text": "The acquisition process completed successfully. Evidence integrity has been secured and verified using MD5 and SHA-256 algorithms."
-        }
-
     def setup_terminal_style(self):
         self.txt_log.setReadOnly(True)
-        self.txt_log.setStyleSheet("""
+        self.txt_log.setStyleSheet(
+            """
             QTextEdit {
                 background-color: #1e1e1e;
                 color: #00e676;
@@ -78,111 +186,124 @@ class ForensicApp(QMainWindow):
                 font-size: 10pt;
                 border: 1px solid #333;
             }
-        """)
-        self.log("--- SYSTEM READY ---")
-        self.log("[*] Forensic Console Initialized.")
+            """
+        )
+        self.log("--- SYSTEM READY ---", "INFO", "SYSTEM_BOOT")
+        self.log(f"[*] Session ID: {self.logger.session_id}", "INFO", "SYSTEM_BOOT")
+        self.log(f"[*] Case Bound: {self.case_no} | Examiner: {self.examiner}", "INFO", "CONTEXT_UPDATED")
+        self.log(f"[*] Evidence Directory: {self.output_dir}", "INFO", "CONTEXT_UPDATED")
 
     def setup_tooltips(self):
-        if hasattr(self, 'txt_caseno'): self.txt_caseno.setToolTip("Unique Incident or Case ID.")
-        if hasattr(self, 'txt_examiner'): self.txt_examiner.setToolTip("Name of the Lead Forensic Investigator.")
-        if hasattr(self, 'txt_ip'): self.txt_ip.setToolTip("Remote server IP address.")
-        if hasattr(self, 'txt_user'): self.txt_user.setToolTip("SSH Username.")
-        if hasattr(self, 'txt_key'): self.txt_key.setToolTip("Path to the SSH Private Key (.pem).")
-        if hasattr(self, 'cmb_disk'): self.cmb_disk.setToolTip("Select from detected devices or type manually.")
-        if hasattr(self, 'btn_discover'): self.btn_discover.setToolTip("Probe remote server for block devices.")
-        if hasattr(self, 'chk_safety'): self.chk_safety.setToolTip("Applies 'conv=noerror,sync' to safely bypass physical read errors.")
-        if hasattr(self, 'chk_ram'): self.chk_ram.setToolTip("Overrides disk target to capture volatile memory (/proc/kcore).")
-        if hasattr(self, 'chk_writeblock'): self.chk_writeblock.setToolTip("Enforce read-only state on the block device before acquisition.")
-        if hasattr(self, 'chk_triage'): self.chk_triage.setToolTip("Executes rapid volatile data collection before full imaging.")
-        if hasattr(self, 'chk_throttle'): self.chk_throttle.setToolTip("Limit network bandwidth usage to prevent network saturation.")
-        if hasattr(self, 'txt_throttle'): self.txt_throttle.setToolTip("Specify bandwidth limit in MB/s.")
-        if hasattr(self, 'btn_start'): self.btn_start.setToolTip("Initiate bit-stream acquisition.")
-        if hasattr(self, 'btn_stop'): self.btn_stop.setToolTip("Abort the current acquisition process safely.")
+        if hasattr(self, "chk_writeblock"):
+            self.chk_writeblock.setToolTip("Attempt to set the target block device read-only (blockdev --setro).")
+        if hasattr(self, "chk_verify"):
+            self.chk_verify.setToolTip("Compute source SHA-256 after acquisition and compare to stream hash.")
+        if hasattr(self, "chk_safety"):
+            self.chk_safety.setToolTip("Safe mode: conv=noerror,sync (pads unreadable blocks with zeros).")
 
     def select_key(self):
         fname, _ = QFileDialog.getOpenFileName(self, "Select SSH Key", "", "PEM Files (*.pem);;All Files (*)")
-        if fname:
+        if fname and hasattr(self, "txt_key"):
             self.txt_key.setText(fname)
 
-    def log(self, msg):
-        self.txt_log.append(msg)
-        cursor = self.txt_log.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.txt_log.setTextCursor(cursor)
+    def log(self, msg, level="INFO", event_type="GENERAL", hash_context=None):
+        try:
+            ui_msg = self.logger.log(msg, level, event_type, source_module="gui", hash_context=hash_context)
+            self.txt_log.append(ui_msg)
+            cursor = self.txt_log.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.txt_log.setTextCursor(cursor)
+        except ForensicLoggerError as e:
+            if self.worker and self.worker.isRunning():
+                self.worker.stop()
+            QMessageBox.critical(self, "Critical Audit Failure", f"Logging mechanism failed! Halting.\n\nDetails: {str(e)}")
 
-    def export_log_to_folder(self):
+    def export_console_to_folder(self):
         if self.output_dir:
             try:
-                log_path = os.path.join(self.output_dir, "live_forensic.log")
-                with open(log_path, "w", encoding="utf-8") as f:
+                with open(os.path.join(self.output_dir, f"AuditConsole_{self.case_no}.log"), "w", encoding="utf-8") as f:
                     f.write(self.txt_log.toPlainText())
-            except Exception as e:
-                self.txt_log.append(f"\n[!] Failed to save log file to output directory: {e}")
+            except OSError:
+                pass
+
+    def validate_network_inputs(self, ip, user):
+        ipv4_re = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        if not re.match(ipv4_re, ip):
+            QMessageBox.warning(self, "Validation Error", "Invalid IPv4 Address format.")
+            return False
+        if not re.match(r"^[a-z_][a-z0-9_-]{0,31}$", user):
+            QMessageBox.warning(self, "Validation Error", "Invalid SSH Username format.")
+            return False
+        return True
 
     def discover_disks(self):
-        ip = self.txt_ip.text().strip()
-        user = self.txt_user.text().strip()
-        key = self.txt_key.text().strip()
+        ip = self.txt_ip.text().strip() if hasattr(self, "txt_ip") else ""
+        user = self.txt_user.text().strip() if hasattr(self, "txt_user") else ""
+        key = self.txt_key.text().strip() if hasattr(self, "txt_key") else ""
 
         if not all([ip, user, key]):
             QMessageBox.warning(self, "Missing Configuration", "Please enter IP, Username, and SSH Key.")
             return
+        if not self.validate_network_inputs(ip, user):
+            return
 
-        self.log("\n[*] Probing remote server for block devices...")
-        if hasattr(self, 'btn_discover'): self.btn_discover.setEnabled(False)
+        self.log("Probing remote server for block devices...", "INFO", "RECON_START")
+        if hasattr(self, "btn_discover"):
+            self.btn_discover.setEnabled(False)
         QApplication.processEvents()
 
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         try:
-            cmd_log = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i {key} {user}@{ip} 'lsblk -o NAME,SIZE,TYPE,MOUNTPOINT'"
-            result_log = subprocess.check_output(cmd_log, shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
-            self.log("\n=== REMOTE DISK LAYOUT ===\n" + result_log + "\n==========================\n")
+            ssh.connect(ip, username=user, key_filename=key, timeout=10)
 
-            cmd_parse = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i {key} {user}@{ip} 'lsblk -r -n -o NAME'"
-            result_parse = subprocess.check_output(cmd_parse, shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            _, stdout_log, _ = ssh.exec_command("lsblk -o NAME,SIZE,TYPE,MOUNTPOINT")
+            result_log = stdout_log.read().decode("utf-8").strip()
+            self.log(f"\n=== REMOTE DISK LAYOUT ===\n{result_log}\n==========================", "INFO", "RECON_RESULT")
 
-            if hasattr(self, 'cmb_disk'):
+            _, stdout_parse, _ = ssh.exec_command("lsblk -r -n -o NAME")
+            result_parse = stdout_parse.read().decode("utf-8").strip()
+
+            if hasattr(self, "cmb_disk"):
                 self.cmb_disk.clear()
-                for line in result_parse.split('\n'):
+                for line in result_parse.split("\n"):
                     dev_name = line.strip()
                     if dev_name:
                         self.cmb_disk.addItem(f"/dev/{dev_name}")
-
-                self.log("[*] Evidence Target dropdown populated successfully.")
+                self.log("Evidence Target dropdown populated successfully.", "INFO", "RECON_SUCCESS")
 
         except Exception as e:
-            self.log(f"[ERROR] Disk discovery failed: {str(e)}")
+            self.log(f"Disk discovery failed: {str(e)}", "ERROR", "RECON_FAILED")
         finally:
-            if hasattr(self, 'btn_discover'): self.btn_discover.setEnabled(True)
+            ssh.close()
+            if hasattr(self, "btn_discover"):
+                self.btn_discover.setEnabled(True)
 
     def start_process(self):
-        ip = self.txt_ip.text().strip()
-        user = self.txt_user.text().strip()
-        key = self.txt_key.text().strip()
-        disk = self.cmb_disk.currentText().strip()
-
-        self.case_no = self.txt_caseno.text() or "UNKNOWN"
-        self.examiner = self.txt_examiner.text() or "EXAMINER"
+        ip = self.txt_ip.text().strip() if hasattr(self, "txt_ip") else ""
+        user = self.txt_user.text().strip() if hasattr(self, "txt_user") else ""
+        key = self.txt_key.text().strip() if hasattr(self, "txt_key") else ""
+        disk = self.cmb_disk.currentText().strip() if hasattr(self, "cmb_disk") else ""
 
         if not all([ip, user, key, disk]):
             QMessageBox.warning(self, "Validation Error", "Target IP, Key, and Target Disk are required.")
             return
+        if not self.validate_network_inputs(ip, user):
+            return
 
         throttle_limit = 0.0
-        if hasattr(self, 'chk_throttle') and self.chk_throttle.isChecked():
+        if hasattr(self, "chk_throttle") and self.chk_throttle.isChecked():
             try:
-                val = float(self.txt_throttle.text().strip())
-                if val > 0:
-                    throttle_limit = val
+                throttle_limit = float(self.txt_throttle.text().strip())
             except ValueError:
-                QMessageBox.warning(self, "Validation Error", "Please enter a valid numeric value for Bandwidth Limit (MB/s).")
+                QMessageBox.warning(self, "Validation Error", "Please enter a valid numeric value for Bandwidth Limit.")
                 return
 
-        safe_mode = hasattr(self, 'chk_safety') and self.chk_safety.isChecked()
-        run_triage = hasattr(self, 'chk_triage') and self.chk_triage.isChecked()
-
-        selected_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        if not selected_dir: return
-        self.output_dir = selected_dir
+        safe_mode = hasattr(self, "chk_safety") and self.chk_safety.isChecked()
+        run_triage = hasattr(self, "chk_triage") and self.chk_triage.isChecked()
+        verify_hash = hasattr(self, "chk_verify") and self.chk_verify.isChecked()
+        write_blocker = hasattr(self, "chk_writeblock") and self.chk_writeblock.isChecked()
 
         msg = QMessageBox(self)
         msg.setWindowTitle("Acquisition Format")
@@ -192,28 +313,41 @@ class ForensicApp(QMainWindow):
         msg.exec()
 
         self.format_type = "E01" if msg.clickedButton() == btn_e01 else "RAW"
-        base_filename = os.path.join(self.output_dir, f"evidence_{self.case_no}_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        base_filename = os.path.join(self.output_dir, f"evidence_{self.case_no}_{timestamp_str}")
 
-        if self.format_type == "E01":
-            output_file = base_filename
-            self.target_filename = base_filename + ".E01"
-        else:
-            output_file = base_filename + ".raw"
-            self.target_filename = output_file
+        self.target_filename = base_filename + (".E01" if self.format_type == "E01" else ".raw")
+        output_file = base_filename if self.format_type == "E01" else self.target_filename
 
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.progressBar.setValue(0)
+        self.start_time = datetime.now(timezone.utc)
 
-        self.start_time = datetime.now()
-        self.log(f"\n--- [ STARTING ACQUISITION ] ---\n[*] Format: {self.format_type}\n[*] Target: {disk}")
+        self.log("--- [ STARTING ACQUISITION ] ---", "INFO", "ACQUISITION_START")
+        self.log(f"Format: {self.format_type} | Target: {disk}", "INFO", "ACQUISITION_PARAMS")
+        self.log(
+            f"Safe Mode: {safe_mode} | Verify Hash: {verify_hash} | Triage: {run_triage} | Throttle: {throttle_limit} | Write-Blocker: {write_blocker}",
+            "INFO",
+            "ACQUISITION_PARAMS",
+        )
 
-        if safe_mode:
-            self.log("[*] Safe Mode ON: Bad sectors will be padded with zeros.")
-        if throttle_limit > 0:
-            self.log(f"[*] Bandwidth limited to: {throttle_limit} MB/s")
-
-        self.worker = AcquisitionWorker(ip, user, key, disk, output_file, self.format_type, self.case_no, self.examiner, throttle_limit, safe_mode, run_triage, self.output_dir)
+        self.worker = AcquisitionWorker(
+            ip,
+            user,
+            key,
+            disk,
+            output_file,
+            self.format_type,
+            self.case_no,
+            self.examiner,
+            throttle_limit,
+            safe_mode,
+            run_triage,
+            self.output_dir,
+            verify_hash,
+            write_blocker,
+        )
         self.worker.progress_signal.connect(self.update_progress_ui)
         self.worker.finished_signal.connect(self.on_acquisition_finished)
         self.worker.error_signal.connect(self.on_acquisition_error)
@@ -221,147 +355,111 @@ class ForensicApp(QMainWindow):
 
     def stop_process(self):
         if self.worker and self.worker.isRunning():
-            self.log("\n[!] Abort requested by user. Terminating secure connection...")
+            self.log("Abort requested by user. Terminating secure connection...", "WARNING", "ACQUISITION_ABORTED")
             self.btn_stop.setEnabled(False)
             self.worker.stop()
-            self.export_log_to_folder()
+            self.export_console_to_folder()
 
     def update_progress_ui(self, data):
-        speed = data.get("speed_mb_s", 0)
-        md5_cur = data.get("md5_current", "")
-        percentage = data.get("percentage", 0)
-        eta = data.get("eta", "Calculating...")
-
-        self.progressBar.setValue(percentage)
-        status_msg = f"Streaming... | Speed: {speed} MB/s | ETA: {eta} | MD5: {md5_cur}"
-        self.statusBar().showMessage(status_msg)
+        self.progressBar.setValue(data.get("percentage", 0))
+        self.statusBar().showMessage(
+            f"Streaming... | Speed: {data.get('speed_mb_s', 0)} MB/s | ETA: {data.get('eta', '')} | MD5: {data.get('md5_current', '')}"
+        )
 
     def on_acquisition_error(self, error_msg):
-        self.log(f"\n[ERROR / ABORTED] {error_msg}")
+        self.log(f"Process Error: {error_msg}", "ERROR", "ACQUISITION_FAILED")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.progressBar.setValue(0)
         self.statusBar().showMessage("Acquisition Interrupted.")
-        self.export_log_to_folder()
+        self.export_console_to_folder()
 
     def on_acquisition_finished(self, data):
         self.progressBar.setValue(100)
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
-        duration = str(datetime.now() - self.start_time).split('.')[0]
-        sha256 = data.get('sha256_final', 'ERROR')
-        md5 = data.get('md5_final', 'ERROR')
+        sha256 = data.get("sha256_final", "ERROR")
+        md5 = data.get("md5_final", "ERROR")
+        remote_sha256 = data.get("remote_sha256", "SKIPPED")
+        hash_match = data.get("hash_match", None)
 
-        self.log(f"\n[SUCCESS] SHA-256: {sha256}\n[SUCCESS] MD5: {md5}")
+        duration = "UNKNOWN"
+        if self.start_time:
+            duration = str(datetime.now(timezone.utc) - self.start_time).split(".")[0]
 
-        timestamp_str = datetime.now().strftime('%Y%m%d')
-        pdf_path = os.path.join(self.output_dir, f"Report_{self.case_no}_{timestamp_str}.pdf")
+        self.log("Local hashes calculated successfully.", "INFO", "INTEGRITY_LOCAL", hash_context={
+            "local_sha256": sha256,
+            "local_md5": md5,
+            "remote_sha256": None if remote_sha256 == "SKIPPED" else remote_sha256,
+            "verified": hash_match,
+        })
+
+        if remote_sha256 != "SKIPPED":
+            if hash_match is True:
+                self.log("Source and Local hashes MATCH exactly.", "INFO", "INTEGRITY_VERIFIED")
+            elif hash_match is False:
+                self.log("WARNING: Source and Local hashes do NOT match.", "ERROR", "INTEGRITY_MISMATCH")
+            else:
+                self.log("Verification status unknown.", "WARNING", "INTEGRITY_UNKNOWN")
+
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         txt_path = os.path.join(self.output_dir, f"Report_{self.case_no}_{timestamp_str}.txt")
+        pdf_path = os.path.join(self.output_dir, f"Report_{self.case_no}_{timestamp_str}.pdf")
 
-        self.generate_txt_report(sha256, md5, duration, txt_path)
-        self.generate_pdf_report(sha256, md5, duration, pdf_path)
+        self.log("Generating reports (TXT & PDF)...", "INFO", "REPORT_START")
 
-        self.log(f"[*] Reports Generated (PDF & TXT).")
-        self.export_log_to_folder()
+        audit_hash, chattr_success = self.logger.seal_audit_trail()
 
-        QMessageBox.information(self, "Complete", "Forensic acquisition completed successfully.\nReports and Logs saved.")
+        report_data = {
+            "case_no": self.case_no,
+            "examiner": self.examiner,
+            "ip": self.txt_ip.text().strip() if hasattr(self, "txt_ip") else "",
+            "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "duration": duration,
+            "format_type": self.format_type,
+            "target_filename": self.target_filename,
+            "triage_requested": hasattr(self, "chk_triage") and self.chk_triage.isChecked(),
+            "writeblock_requested": hasattr(self, "chk_writeblock") and self.chk_writeblock.isChecked(),
+            "throttle_enabled": hasattr(self, "chk_throttle") and self.chk_throttle.isChecked(),
+            "throttle_val": self.txt_throttle.text().strip() if hasattr(self, "txt_throttle") else "0",
+            "safe_mode": hasattr(self, "chk_safety") and self.chk_safety.isChecked(),
+            "remote_sha256": remote_sha256,
+            "local_sha256": sha256,
+            "local_md5": md5,
+            "hash_match": hash_match,
+            "audit_hash": audit_hash,
+            "kernel_seal_success": chattr_success,
+            "txt_path": txt_path,
+            "pdf_path": pdf_path,
+        }
 
-    def generate_txt_report(self, sha256_hash, md5_hash, duration, filepath):
-        triage_status = f"Saved as Triage_{self.case_no}.txt" if hasattr(self, 'chk_triage') and self.chk_triage.isChecked() else "Not Requested"
-        write_blocker = "Enabled" if hasattr(self, 'chk_writeblock') and self.chk_writeblock.isChecked() else "Disabled"
-        throttle_status = f"{self.txt_throttle.text().strip()} MB/s" if hasattr(self, 'chk_throttle') and self.chk_throttle.isChecked() else "No Limit"
-        safe_mode_status = "Active (Ignored & Padded)" if hasattr(self, 'chk_safety') and self.chk_safety.isChecked() else "Inactive"
+        ReportEngine.generate_reports(report_data)
 
-        report_content = f"""
-================================================================
-            DIGITAL FORENSIC ACQUISITION REPORT
-================================================================
-CASE DETAILS:
--------------
-Case Number    : {self.case_no}
-Examiner       : {self.examiner}
-Date           : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-Target IP      : {self.txt_ip.text()}
+        self.export_console_to_folder()
+        QMessageBox.information(self, "Complete", "Forensic acquisition completed.\nReports saved.\n\nAudit trail is sealed.")
 
-ACQUISITION LOG:
-----------------
-Format Type     : {self.format_type}
-Duration        : {duration}
-Write Blocker   : {write_blocker}
-Bandwidth Limit : {throttle_status}
-Live Triage     : {triage_status}
-
-HEALTH / ERROR LOGS:
--------------------------
-Bad Sector Handling: {safe_mode_status}
-
-EVIDENCE DETAILS:
------------------
-File Name       : {os.path.basename(self.target_filename)}
-SHA-256 Hash    : {sha256_hash}
-MD5 Hash        : {md5_hash}
-Integrity       : VERIFIED
-
-================================================================
-Note: Auto-generated by Remote Forensic Imager
-"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(report_content.strip() + "\n")
-
-    def generate_pdf_report(self, sha256, md5, duration, filepath):
-        triage_status = f"Saved as Triage_{self.case_no}.txt" if hasattr(self, 'chk_triage') and self.chk_triage.isChecked() else "Not Requested"
-        safe_mode_status = "PADDED" if hasattr(self, 'chk_safety') and self.chk_safety.isChecked() else "NOT CHECKED"
-
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("helvetica", 'B', 16)
-        pdf.cell(0, 10, self.report_labels['title'], border=1, ln=1, align='C')
-        pdf.ln(10)
-
-        pdf.set_font("helvetica", 'B', 12)
-        pdf.cell(0, 10, self.report_labels['case_details'], ln=1)
-        pdf.set_font("helvetica", '', 10)
-
-        label_w = 45
-        pdf.cell(label_w, 7, self.report_labels['case_no'], 0)
-        pdf.cell(0, 7, self.case_no, 0, 1)
-        pdf.cell(label_w, 7, self.report_labels['examiner'], 0)
-        pdf.cell(0, 7, self.examiner, 0, 1)
-        pdf.cell(label_w, 7, self.report_labels['date'], 0)
-        pdf.cell(0, 7, datetime.now().strftime('%Y-%m-%d'), 0, 1)
-        pdf.cell(label_w, 7, self.report_labels['ip'], 0)
-        pdf.cell(0, 7, self.txt_ip.text(), 0, 1)
-        pdf.cell(label_w, 7, self.report_labels['duration'], 0)
-        pdf.cell(0, 7, duration, 0, 1)
-
-        pdf.ln(5)
-        pdf.set_font("helvetica", 'B', 12)
-        pdf.cell(0, 10, self.report_labels['integrity'], ln=1)
-        pdf.set_font("courier", '', 10)
-        pdf.cell(0, 8, f"SHA-256: {sha256}", border=1, ln=1)
-        pdf.cell(0, 8, f"MD5    : {md5}", border=1, ln=1)
-
-        pdf.ln(5)
-        pdf.set_font("helvetica", 'B', 12)
-        pdf.cell(0, 10, self.report_labels['triage'], ln=1)
-        pdf.set_font("helvetica", '', 10)
-        pdf.cell(label_w, 7, self.report_labels['triage_log'], 0)
-        pdf.cell(0, 7, triage_status, 0, 1)
-        pdf.cell(label_w, 7, self.report_labels['error_check'], 0)
-        pdf.cell(0, 7, safe_mode_status, 0, 1)
-
-        pdf.ln(5)
-        pdf.set_font("helvetica", 'B', 12)
-        pdf.cell(0, 10, self.report_labels['summary_title'], ln=1)
-        pdf.set_font("helvetica", '', 10)
-        pdf.multi_cell(0, 6, self.report_labels['summary_text'])
-
-        pdf.output(filepath)
 
 if __name__ == "__main__":
+    py_missing, native_missing = run_dependency_check()
+    if py_missing or native_missing:
+        error_msg = "Missing Dependencies Detected:\n\n"
+        if py_missing:
+            error_msg += "Python Packages:\n" + "\n".join([f" - {p}" for p in py_missing]) + "\n"
+        if native_missing:
+            error_msg += "\nSystem Libraries:\n" + "\n".join([f" - {l}" for l in native_missing]) + "\n"
+
+        app = QApplication(sys.argv)
+        QMessageBox.critical(None, "Dependency Error", error_msg + "\n\nPlease install required components before running.")
+        sys.exit(1)
+
     app = QApplication(sys.argv)
-    apply_stylesheet(app, theme='dark_teal.xml')
-    window = ForensicApp()
+    apply_stylesheet(app, theme="dark_teal.xml")
+
+    wizard = CaseWizard()
+    if wizard.exec() != QDialog.DialogCode.Accepted:
+        sys.exit(0)
+
+    window = ForensicApp(wizard.case_no, wizard.examiner, wizard.evidence_dir)
     window.show()
     sys.exit(app.exec())

@@ -32,3 +32,10 @@ evidence_*
 triage_evidence_*
 secret_evidence.txt
 evidence_file.txt
+
+# Audit trails
+forensic_audit.jsonl
+temp_audit_*.jsonl
+AuditTrail_*.jsonl
+*.jsonl
+Report_*.pdf
