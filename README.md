@@ -178,7 +178,18 @@ Any modification, removal, or reordering of records should fail verification.
 
 ## License
 
-MIT License (see `LICENSE`).
+This project is licensed under the MIT License.
+
+You are free to:
+- Use
+- Modify
+- Distribute
+- Sublicense
+- Use commercially
+
+As long as the original copyright and license notice are included.
+
+See the full license text in the `LICENSE` file.
 
 ---
 
