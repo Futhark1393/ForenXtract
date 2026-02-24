@@ -2,4 +2,3 @@ PyQt6>=6.6
 qt-material>=2.14
 paramiko>=3.0
 fpdf2>=2.7.0
-pyewf>=20240506
