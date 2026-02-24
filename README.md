@@ -1,10 +1,11 @@
 # Remote Forensic Imager (RFI)
 
-Author: Futhark1393
+Author: Futhark1393  
+Version: 2.0.0
 
-Remote Forensic Imager (RFI) is a forensic-grade remote disk acquisition tool built with Python and PyQt6.
+Remote Forensic Imager (RFI) is a case-first remote disk acquisition tool built with Python and PyQt6.
 
-It enforces a case-first workflow, produces a cryptographically chained audit trail (JSONL), supports optional source-to-stream verification, and generates forensic reports (TXT/PDF) for evidentiary documentation.
+It enforces structured forensic workflows, generates a cryptographically chained audit trail (JSONL), supports optional source-to-stream verification, and produces TXT/PDF forensic reports suitable for evidentiary documentation.
 
 ---
 
@@ -20,13 +21,9 @@ screenshots/
 ~~~
 
 ![Case Wizard](screenshots/case_wizard.png)
-
 ![Main UI (Idle)](screenshots/main_ui_idle.png)
-
 ![Remote Disk Discovery](screenshots/disk_discovery.png)
-
 ![Acquisition Running](screenshots/acquisition_running.png)
-
 ![Report Preview](screenshots/report_preview.png)
 
 ---
@@ -40,25 +37,30 @@ screenshots/
 - No acquisition without an active case context
 
 ### Forensic Audit Logging
-- JSONL structured audit trail per case/session
-- Cryptographic chaining (`prev_hash → entry_hash`)
+- JSONL structured audit trail per session
+- Cryptographic hash chaining (`prev_hash → entry_hash`)
 - Deterministic JSON serialization
-- Forced disk flush (`fsync`) for each record
-- Optional file sealing (read-only + `chattr +i` when available)
-- Offline chain verification supported
+- Forced disk flush (`fsync`) per entry
+- Optional file sealing (`chmod 444` + `chattr +i` when available)
+- Offline chain verification
 
 ### Acquisition & Integrity
-- SSH-based acquisition workflow
+- SSH-based remote acquisition
 - Remote disk discovery (`lsblk`)
-- On-the-fly hashing (MD5 + SHA-256) during acquisition
-- Optional post-acquisition remote SHA-256 collection (verification mode)
-- Safe Mode option (pads read errors with zeros)
+- On-the-fly hashing (MD5 + SHA-256)
+- Optional post-acquisition remote SHA-256 verification
+- Safe Mode (pads unreadable sectors with zeros)
+- Optional kernel-level write-blocker enforcement
 
 ### Reporting
-- TXT report
-- PDF report
-- Includes integrity section (local + optional source hash)
-- Includes audit trail hash and sealing status
+- TXT forensic report
+- PDF forensic report
+- Includes:
+  - Local hash values
+  - Optional source hash
+  - Verification result
+  - Audit trail hash
+  - Seal status
 
 ---
 
@@ -68,80 +70,141 @@ screenshots/
 codes/
 ├── gui.py
 ├── threads.py
-├── engine.py
 ├── logger.py
 ├── report_engine.py
-└── dependency_checker.py
+├── dependency_checker.py
+└── __init__.py
 ~~~
 
 Design goals:
 - Fail-secure behavior
 - Tamper-evident logging
-- Thread-safe audit output
-- Clear separation between GUI, acquisition, logging, reporting
+- Thread-safe acquisition
+- Clear separation of responsibilities
+- Minimal external runtime assumptions
 
 ---
 
-## Installation
+# Installation
 
-### Clone
+## 1. Clone
 
 ~~~bash
 git clone https://github.com/Futhark1393/Remote-Forensic-Imager.git
 cd Remote-Forensic-Imager
 ~~~
 
-### Python Dependencies
+---
+
+## 2. System Dependencies (Linux)
+
+RFI requires Qt runtime libraries.
+
+### Ubuntu / Debian
+
+~~~bash
+sudo apt update
+sudo apt install -y \
+    libegl1 \
+    libgl1 \
+    libglib2.0-0 \
+    libxkbcommon0 \
+    libxkbcommon-x11-0 \
+    libxcb1 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render0 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libxcb-shm0 \
+    libxcb-sync1 \
+    libxcb-xfixes0 \
+    libxcb-xinerama0 \
+    libxcb-xkb1 \
+    libxrender1 \
+    libxi6 \
+    libsm6 \
+    libice6 \
+    libfontconfig1 \
+    libfreetype6
+~~~
+
+### Fedora
+
+~~~bash
+sudo dnf install qt6-qtbase qt6-qtbase-gui
+~~~
+
+---
+
+## 3. Python Dependencies
+
+~~~bash
+pip install -r requirements.txt
+~~~
+
+Or manually:
 
 ~~~bash
 pip install pyqt6 qt-material paramiko fpdf
 ~~~
 
-### Optional: E01 Support (pyewf/libewf)
+---
+
+## 4. Optional: E01 Support
+
+E01 imaging requires libewf + pyewf.
+
+### Ubuntu / Debian
 
 ~~~bash
+sudo apt install libewf-dev
 pip install pyewf
 ~~~
 
-System libraries:
+### Fedora
 
-Debian / Ubuntu:
-~~~bash
-sudo apt install libewf-dev
-~~~
-
-Fedora:
 ~~~bash
 sudo dnf install libewf-devel
+pip install pyewf
 ~~~
+
+If pyewf is not installed:
+- RAW acquisition works normally
+- E01 option will raise a runtime error
 
 ---
 
-## Running
+# Running
 
 ~~~bash
 python main_qt6.py
 ~~~
 
-If you created an alias/entrypoint:
+If you created an alias:
+
 ~~~bash
 rfi
 ~~~
 
 ---
 
-## Workflow
+# Workflow
 
-1) Start RFI and create/open a case in the Case Wizard  
-2) Provide SSH details and select key  
-3) Discover disks (optional)  
-4) Select target device/partition  
-5) Choose acquisition format (RAW / E01)  
-6) Acquire + generate report + seal audit trail  
+1. Start RFI → Case Wizard appears
+2. Define Case Number and Examiner
+3. Bind Evidence Directory
+4. Enter SSH details
+5. Discover disks (optional)
+6. Select acquisition target
+7. Choose format (RAW / E01)
+8. Acquire → Report generated → Audit sealed
 
 ---
 
-## Output Artifacts
+# Output Artifacts
 
 Inside the selected Evidence Directory:
 
@@ -155,7 +218,7 @@ evidence_<case>_<timestamp>.raw / .E01
 
 ---
 
-## Audit Chain Verification
+# Audit Chain Verification
 
 ~~~python
 from codes.logger import AuditChainVerifier
@@ -164,35 +227,44 @@ valid, message = AuditChainVerifier.verify_chain("AuditTrail_CASE_SESSION.jsonl"
 print(valid, message)
 ~~~
 
-Any modification, removal, or reordering of records should fail verification.
+Any modification, deletion, or reordering of records will break the chain.
 
 ---
 
-## Notes on Verification
+# Notes on Verification
 
-- E01 is a container format. Integrity verification is performed against the acquisition stream hash and optional source hash collection.
-- **If the target is a live system disk, source SHA-256 collected after acquisition may differ due to ongoing writes. Prefer snapshots or unmounted devices for strict equivalence.**
-- This is expected behavior on live disks and should not be reported as a bug.
+- E01 is a container format. Integrity is calculated on the acquisition stream.
+- If acquiring from a live system disk, post-acquisition source hashing may differ due to ongoing writes.
+- For strict source-to-image equivalence, use:
+  - Unmounted disks
+  - Snapshots
+  - Write-blocked devices
 
----
-
-## License
-
-This project is licensed under the MIT License.
-
-You are free to:
-- Use
-- Modify
-- Distribute
-- Sublicense
-- Use commercially
-
-As long as the original copyright and license notice are included.
-
-See the full license text in the `LICENSE` file.
+This behavior is expected on live systems.
 
 ---
 
-## Author
+# Versioning
+
+RFI follows Semantic Versioning:
+
+- MAJOR: Breaking architectural changes
+- MINOR: New features
+- PATCH: Bug fixes
+
+Example:
+2.0.0 → Major feature release  
+2.0.1 → Bugfix  
+2.1.0 → New feature  
+
+---
+
+# License
+
+MIT License — see `LICENSE` file.
+
+---
+
+# Author
 
 Futhark1393
