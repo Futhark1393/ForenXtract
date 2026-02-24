@@ -74,12 +74,12 @@ class AcquisitionWorker(QThread):
         If this fails, we abort because verification against /dev requires immutability.
         """
         # 1) Try blockdev setro
-        _, err, code = self._ssh_exec(ssh, f"sudo blockdev --setro {self.disk}")
+        _, err, code = self._ssh_exec(ssh, f"sudo -n blockdev --setro {self.disk}")
         if code != 0:
             raise RuntimeError(f"Write-blocker failed (blockdev --setro). {err}")
 
         # 2) Validate read-only flag
-        out, err, code = self._ssh_exec(ssh, f"sudo blockdev --getro {self.disk}")
+        out, err, code = self._ssh_exec(ssh, f"sudo -n blockdev --getro {self.disk}")
         if code != 0:
             raise RuntimeError(f"Write-blocker check failed (blockdev --getro). {err}")
 
@@ -159,7 +159,7 @@ class AcquisitionWorker(QThread):
                                 pass
 
                         # Get disk size
-                        out, err, code = self._ssh_exec(ssh, f"sudo blockdev --getsize64 {self.disk}")
+                        out, err, code = self._ssh_exec(ssh, f"sudo -n blockdev --getsize64 {self.disk}")
                         if code != 0 or not out.strip().isdigit():
                             raise RuntimeError(f"Failed to read disk size. {err}")
                         target_bytes = int(out.strip())
@@ -271,7 +271,7 @@ class AcquisitionWorker(QThread):
                     # IMPORTANT:
                     # This compares source disk hash to the STREAM hash (sha256_hash) — not the E01 container hash.
                     # It will still mismatch if the disk changes after imaging (write-blocker strongly recommended).
-                    out, err, code = self._ssh_exec(ssh, f"sudo sha256sum {self.disk}")
+                    out, err, code = self._ssh_exec(ssh, f"sudo -n sha256sum {self.disk}")
                     if code != 0 or not out:
                         remote_sha256 = "ERROR"
                         hash_match = False

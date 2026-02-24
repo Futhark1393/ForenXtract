@@ -1,41 +1,12 @@
-# AWS Keys
 *.pem
-*.key
-
-# Forensic Image Files
-*.img
-*.img.gz
-*.dd
+*.raw
 *.E01
 
-# Python Junk
-__pycache__/
-*.pyc
-.env
-venv/
-.idea/
-.vscode/
-
-# OS and Editor Backups
-.DS_Store
-*~
-*.swp
-*.swo
-
-# Forensic Reports & Logs
-Report_*.txt
-*.log
-live_forensic.log
-
-# Evidence Images & Test Files
-evidence_*
-triage_evidence_*
-secret_evidence.txt
-evidence_file.txt
-
-# Audit trails
-forensic_audit.jsonl
-temp_audit_*.jsonl
 AuditTrail_*.jsonl
-*.jsonl
+temp_audit_*.jsonl
+AuditConsole_*.log
 Report_*.pdf
+Report_*.txt
+
+__pycache__/
+.venv/
