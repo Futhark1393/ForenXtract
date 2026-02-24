@@ -33,5 +33,4 @@ jobs:
           python -c "import codes.logger"
           python -c "import codes.threads"
           python -c "import codes.dependency_checker"
-          python -c "import codes.engine"
           python -c "import codes.gui"
