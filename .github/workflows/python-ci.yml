@@ -18,10 +18,34 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install system dependencies
+        - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libewf-dev
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libglib2.0-0 \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            libxcb1 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxrender1 \
+            libxi6 \
+            libsm6 \
+            libice6 \
+            libfontconfig1 \
+            libfreetype6
 
       - name: Install Python dependencies
         run: |
