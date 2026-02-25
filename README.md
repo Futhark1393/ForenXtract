@@ -256,22 +256,6 @@ This is expected behavior and not a bug.
 
 ---
 
-# Versioning
-
-RFI follows Semantic Versioning:
-
-- MAJOR → breaking changes
-- MINOR → new features
-- PATCH → bug fixes
-
-Example:
-
-- `2.0.0` → Case-first + forensic logger release
-- `2.0.1` → Stability improvements
-- `2.1.0` → New feature
-
----
-
 # License
 
 MIT License — see [LICENSE](LICENSE)
