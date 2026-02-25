@@ -174,14 +174,7 @@ class ForensicLogger:
                     except Exception as e:
                         print(f"WARNING: signing failed: {e}", file=sys.stderr)
 
-                # Set read-only (may fail in restricted environments like CI)
-                chmod_success = False
-                try:
-                    os.chmod(self.log_file_path, 0o444)
-                    chmod_success = True
-                except OSError as e:
-                    print(f"WARNING: chmod failed (may be in restricted environment): {e}", file=sys.stderr)
-
+                # Attempt to make immutable (chattr), won't work without sudo passwordless (normal on forensic systems)
                 chattr_success = False
                 try:
                     subprocess.run(
