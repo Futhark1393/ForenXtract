@@ -304,14 +304,24 @@ If E01 bindings are not installed:
 
 # Running
 
+## GUI Mode
+
 ~~~bash
 python main_qt6.py
 ~~~
 
-Or:
+## CLI Mode (Headless)
 
 ~~~bash
-rfi
+./rfi-acquire --ip 10.0.0.1 --user ubuntu --key ~/.ssh/key.pem \
+  --disk /dev/sda --output-dir ./evidence \
+  --case 2026-001 --examiner "Investigator"
+~~~
+
+Or if installed via `pip install -e .`:
+
+~~~bash
+rfi-acquire --help
 ~~~
 
 ---
@@ -322,9 +332,10 @@ Inside the selected Evidence Directory:
 
 - `evidence_<CASE>_<UTC>.raw` or `.E01`
 - `AuditTrail_<CASE>_<SESSION>.jsonl`
-- `AuditConsole_<CASE>.log`
+- `AuditTrail_<CASE>_<SESSION>.jsonl.sig` (if signing key provided)
 - `Report_<CASE>_<UTC>.pdf`
 - `Report_<CASE>_<UTC>.txt`
+- `Triage_<CASE>.txt` (if `--triage` enabled)
 
 ---
 
