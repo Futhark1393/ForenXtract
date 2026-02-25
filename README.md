@@ -3,7 +3,7 @@
 ![CI](https://github.com/Futhark1393/Remote-Forensic-Imager/actions/workflows/python-ci.yml/badge.svg)
 
 **Author:** Futhark1393  
-**Version:** 3.0.0  
+**Version:** 3.1.1  
 **License:** MIT  
 
 Remote Forensic Imager (RFI) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**.
