@@ -1,17 +1,27 @@
 # Remote Forensic Imager (RFI)
 
+![CI](https://github.com/Futhark1393/Remote-Forensic-Imager/actions/workflows/python-ci.yml/badge.svg)
+
 **Author:** Futhark1393  
 **Version:** 2.0.0  
+**License:** MIT  
 
-Remote Forensic Imager (RFI) is a **case-first** remote disk acquisition tool built with **Python + PyQt6**.
+Remote Forensic Imager (RFI) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**.
 
-It enforces a structured forensic workflow, generates a **cryptographically hash-chained audit trail (JSONL)**, supports optional **source-to-stream SHA-256 verification**, and produces **TXT/PDF** forensic reports for evidentiary documentation.
+It enforces structured forensic workflows, generates a **cryptographically hash-chained audit trail (JSONL)**, supports optional **source-to-stream SHA-256 verification**, and produces **TXT/PDF forensic reports** suitable for evidentiary documentation.
 
 ---
 
-## Project Page
+## Engineering Documentation
 
-A detailed engineering write-up (architecture decisions, audit trail model, integrity verification) is available here:
+A detailed engineering write-up covering:
+
+- Architecture decisions  
+- Audit trail hash-chain model  
+- Integrity verification approach  
+- Threat considerations  
+
+is available here:
 
 👉 https://kemalsebzeci-site.vercel.app/blog/rfi-architecture
 
@@ -38,30 +48,37 @@ Screenshots included in `./screenshots/`
 
 ---
 
-## Core Features
+# Core Capabilities
 
-### Case-First Workflow
+## Case-First Workflow
+
 - Mandatory Case Wizard at startup
 - Case Number + Examiner required
 - Evidence directory binding required
-- No acquisition without an active case context
+- No acquisition allowed without active case context
 
-### Forensic Audit Logging (JSONL)
+## Tamper-Evident Audit Logging (JSONL)
+
 - Structured per-session audit trail
-- Cryptographic hash chaining (`prev_hash -> entry_hash`)
+- Cryptographic chaining (`prev_hash → entry_hash`)
 - Deterministic JSON serialization
-- Forced disk flush (`fsync`) per entry
-- Optional sealing (best-effort): `chmod 444` + `chattr +i` (if available)
+- Forced disk flush (`fsync`) per record
+- Optional sealing (best-effort):
+  - `chmod 444`
+  - `chattr +i` (if available)
+- Offline chain verification support
 
-### Acquisition & Integrity
+## Acquisition & Integrity
+
 - SSH-based acquisition
 - Remote disk discovery (`lsblk`)
 - On-the-fly hashing (MD5 + SHA-256)
-- Optional post-acquisition **remote SHA-256** verification
-- Safe Mode (`conv=noerror,sync`) padding unreadable blocks with zeros
+- Optional post-acquisition remote SHA-256 verification
+- Safe Mode (`conv=noerror,sync`)
 - Optional write-blocker enforcement (best-effort)
 
-### Reporting
+## Reporting
+
 - TXT forensic report
 - PDF forensic report
 - Includes:
@@ -73,7 +90,31 @@ Screenshots included in `./screenshots/`
 
 ---
 
-## Architecture
+# CLI Tooling
+
+RFI includes a command-line verifier for audit trails.
+
+## Verify Audit Chain
+
+~~~bash
+python rfi_verify.py AuditTrail_CASE_SESSION.jsonl
+~~~
+
+Or if installed as alias:
+
+~~~bash
+rfi-verify AuditTrail_CASE_SESSION.jsonl
+~~~
+
+Exit codes:
+
+- `0` → PASS  
+- `2` → FAIL (tampering detected)  
+- `1` → Error  
+
+---
+
+# Architecture
 
 ~~~text
 codes/
@@ -81,31 +122,42 @@ codes/
 ├── threads.py
 ├── logger.py
 ├── report_engine.py
-└── dependency_checker.py
+├── dependency_checker.py
+└── __init__.py
 ~~~
 
+Separation of concerns:
+
+- GUI → user interaction layer
+- threads → acquisition execution
+- logger → cryptographic audit engine
+- report_engine → evidentiary documentation
+- dependency_checker → runtime validation
+
 Design goals:
+
 - Fail-secure behavior
 - Tamper-evident logging
-- Thread-safe acquisition
-- Clear separation of responsibilities
-- Minimal runtime assumptions
+- Deterministic record generation
+- Minimal implicit trust assumptions
 
 ---
 
 # Installation
 
 ## 1) Clone
+
 ~~~bash
 git clone https://github.com/Futhark1393/Remote-Forensic-Imager.git
 cd Remote-Forensic-Imager
 ~~~
 
+---
+
 ## 2) System Dependencies (Linux)
 
-RFI requires Qt runtime libraries (PyQt6).
-
 ### Ubuntu / Debian / Kali
+
 ~~~bash
 sudo apt update
 sudo apt install -y \
@@ -117,11 +169,15 @@ sudo apt install -y \
 ~~~
 
 ### Fedora
+
 ~~~bash
 sudo dnf install -y qt6-qtbase qt6-qtbase-gui mesa-libEGL mesa-libGL
 ~~~
 
+---
+
 ## 3) Python Dependencies
+
 ~~~bash
 python -m venv .venv
 source .venv/bin/activate
@@ -129,7 +185,8 @@ pip install -U pip
 pip install -r requirements.txt
 ~~~
 
-If you prefer minimal manual install:
+Minimal install:
+
 ~~~bash
 pip install PyQt6 qt-material paramiko fpdf2
 ~~~
@@ -138,23 +195,24 @@ pip install PyQt6 qt-material paramiko fpdf2
 
 ## 4) Optional: E01 (EWF) Support
 
-E01 requires **libewf + Python bindings**.
+E01 imaging requires **libewf + Python bindings**.
 
-### Option A (recommended on Debian/Kali/Ubuntu): system package
+### Debian / Ubuntu / Kali
+
 ~~~bash
 sudo apt install -y libewf2 python3-libewf
 ~~~
 
-### Option B (pip): libewf-python (may require build toolchain)
+### Alternative (pip)
+
 ~~~bash
 pip install libewf-python
 ~~~
 
-Note: the import name in Python is often `pyewf` even when the package name is `python3-libewf` or `libewf-python`.
-
 If E01 bindings are not installed:
+
 - RAW acquisition works normally
-- E01 option should be treated as unavailable
+- E01 option will be unavailable
 
 ---
 
@@ -164,30 +222,19 @@ If E01 bindings are not installed:
 python main_qt6.py
 ~~~
 
-If you created an alias:
+Or:
+
 ~~~bash
 rfi
 ~~~
 
 ---
 
-# Workflow
-
-1. Start RFI → Case Wizard appears  
-2. Define Case Number + Examiner  
-3. Bind Evidence Directory  
-4. Enter SSH details  
-5. Discover disks (optional)  
-6. Select acquisition target  
-7. Choose format (RAW / E01)  
-8. Acquire → Report generated → Audit trail sealed (best-effort)  
-
----
-
 # Output Artifacts
 
-Inside the selected Evidence Directory, RFI generates:
-- `evidence_<CASE>_<UTC>.raw` or `evidence_<CASE>_<UTC>.E01`
+Inside the selected Evidence Directory:
+
+- `evidence_<CASE>_<UTC>.raw` or `.E01`
 - `AuditTrail_<CASE>_<SESSION>.jsonl`
 - `AuditConsole_<CASE>.log`
 - `Report_<CASE>_<UTC>.pdf`
@@ -195,20 +242,42 @@ Inside the selected Evidence Directory, RFI generates:
 
 ---
 
-## Notes on Verification
+# Notes on Verification
 
-- E01 is a container format. Verification is based on stream hashing + optional source hashing.
-- If the target device is a live system disk, post-acquisition `/dev/...` hashing may differ due to ongoing writes.
-- For strict source-to-image equivalence, acquire from a stable target (unmounted disk, snapshot, or write-blocked device).
+- E01 is a container format.
+- Integrity is calculated on the acquisition stream.
+- If acquiring from a live system disk, post-acquisition `/dev/...` hashing may differ due to ongoing writes.
+- For strict source-to-image equivalence:
+  - Use snapshots
+  - Use unmounted devices
+  - Use hardware write-blockers
+
+This is expected behavior and not a bug.
 
 ---
 
-## License
+# Versioning
+
+RFI follows Semantic Versioning:
+
+- MAJOR → breaking changes
+- MINOR → new features
+- PATCH → bug fixes
+
+Example:
+
+- `2.0.0` → Case-first + forensic logger release
+- `2.0.1` → Stability improvements
+- `2.1.0` → New feature
+
+---
+
+# License
 
 MIT License — see [LICENSE](LICENSE)
 
 ---
 
-## Author
+# Author
 
 Futhark1393
