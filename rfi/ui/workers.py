@@ -1,0 +1,72 @@
+# Author: Futhark1393
+# Description: Thin Qt worker wrappers. No business logic.
+# The AcquisitionEngine does all the real work; this just bridges
+# its callbacks to pyqtSignal for the GUI.
+
+from PyQt6.QtCore import QThread, pyqtSignal
+
+from rfi.core.acquisition.base import AcquisitionEngine, AcquisitionError
+
+
+class AcquisitionWorker(QThread):
+    """
+    QThread wrapper around AcquisitionEngine.
+
+    Bridges the engine's on_progress callback to Qt signals.
+    Contains zero acquisition logic.
+    """
+
+    progress_signal = pyqtSignal(dict)
+    finished_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
+
+    def __init__(
+        self,
+        ip: str,
+        user: str,
+        key_path: str,
+        disk: str,
+        output_file: str,
+        format_type: str,
+        case_no: str,
+        examiner: str,
+        throttle_limit: float = 0.0,
+        safe_mode: bool = True,
+        run_triage: bool = False,
+        output_dir: str = "",
+        verify_hash: bool = False,
+        write_blocker: bool = False,
+    ):
+        super().__init__()
+        self._engine = AcquisitionEngine(
+            ip=ip,
+            user=user,
+            key_path=key_path,
+            disk=disk,
+            output_file=output_file,
+            format_type=format_type,
+            case_no=case_no,
+            examiner=examiner,
+            throttle_limit=throttle_limit,
+            safe_mode=safe_mode,
+            run_triage=run_triage,
+            output_dir=output_dir,
+            verify_hash=verify_hash,
+            write_blocker=write_blocker,
+            on_progress=self._on_progress,
+        )
+
+    def _on_progress(self, data: dict) -> None:
+        self.progress_signal.emit(data)
+
+    def stop(self) -> None:
+        self._engine.stop()
+
+    def run(self) -> None:
+        try:
+            result = self._engine.run()
+            self.finished_signal.emit(result)
+        except AcquisitionError as e:
+            self.error_signal.emit(str(e))
+        except Exception as e:
+            self.error_signal.emit(f"Unexpected error: {e}")

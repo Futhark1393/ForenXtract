@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 
-from codes.logger import AuditChainVerifier
+from rfi.audit.verify import AuditChainVerifier
 
 
 def parse_args() -> argparse.Namespace:

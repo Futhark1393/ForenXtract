@@ -6,8 +6,8 @@ import sys
 from PyQt6.QtWidgets import QApplication, QMessageBox, QDialog
 from qt_material import apply_stylesheet
 
-from codes.dependency_checker import run_dependency_check
-from codes.gui import ForensicApp, CaseWizard
+from rfi.deps.dependency_checker import run_dependency_check
+from rfi.ui.gui import ForensicApp, CaseWizard
 
 
 def main():

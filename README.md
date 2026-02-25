@@ -3,12 +3,12 @@
 ![CI](https://github.com/Futhark1393/Remote-Forensic-Imager/actions/workflows/python-ci.yml/badge.svg)
 
 **Author:** Futhark1393  
-**Version:** 2.1.1  
+**Version:** 3.0.0  
 **License:** MIT  
 
 Remote Forensic Imager (RFI) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**.
 
-It enforces structured forensic workflows, generates a **cryptographically hash-chained audit trail (JSONL)**, supports optional **source-to-stream SHA-256 verification**, and produces **TXT/PDF forensic reports** suitable for evidentiary documentation.
+It enforces structured forensic workflows through an **explicit session state machine**, generates a **cryptographically hash-chained audit trail (JSONL)**, supports optional **source-to-stream SHA-256 verification**, and produces **TXT/PDF forensic reports** suitable for evidentiary documentation.
 
 ---
 
@@ -57,6 +57,22 @@ Screenshots included in `./screenshots/`
 - Evidence directory binding required
 - No acquisition allowed without active case context
 
+## Session State Machine
+
+RFI enforces forensic workflow ordering through an explicit state machine:
+
+~~~text
+NEW → CONTEXT_BOUND → ACQUIRING → VERIFYING → SEALED → DONE
+~~~
+
+- `bind_context()` — NEW → CONTEXT_BOUND (case wizard completion)
+- `begin_acquisition()` — CONTEXT_BOUND → ACQUIRING (start imaging)
+- `begin_verification()` — ACQUIRING → VERIFYING (post-acq hash check)
+- `seal()` — ACQUIRING|VERIFYING → SEALED (lock audit trail)
+- `finalize()` — SEALED → DONE
+
+Illegal transitions (e.g., acquiring before context binding, logging after sealing) raise `SessionStateError` and halt operation. The GUI drives the session — it cannot bypass the workflow order.
+
 ## Tamper-Evident Audit Logging (JSONL)
 
 - Structured per-session audit trail
@@ -70,12 +86,14 @@ Screenshots included in `./screenshots/`
 
 ## Acquisition & Integrity
 
-- SSH-based acquisition
+- SSH-based acquisition via pure-Python engine (headless-testable, no Qt dependency)
 - Remote disk discovery (`lsblk`)
-- On-the-fly hashing (MD5 + SHA-256)
+- On-the-fly dual hashing (MD5 + SHA-256) via `StreamHasher`
 - Optional post-acquisition remote SHA-256 verification
 - Safe Mode (`conv=noerror,sync`)
 - Optional write-blocker enforcement (best-effort)
+- Automatic retry on connection loss (up to 3 retries with resume)
+- Configurable bandwidth throttling
 
 ## Reporting
 
@@ -117,29 +135,51 @@ Exit codes:
 # Architecture
 
 ~~~text
-codes/
-├── gui.py
-├── threads.py
-├── logger.py
-├── report_engine.py
-├── dependency_checker.py
-└── __init__.py
+rfi/
+├── ui/                              # Qt / GUI layer
+│   ├── gui.py                       # CaseWizard + ForensicApp (Session-driven)
+│   ├── workers.py                   # Thin QThread wrapper (~70 lines, no business logic)
+│   └── resources/
+│       └── forensic_qt6.ui
+├── core/                            # Business logic (Qt-free, headless-testable)
+│   ├── session.py                   # Workflow state machine (NEW → DONE)
+│   ├── hashing.py                   # StreamHasher (MD5 + SHA-256)
+│   ├── policy.py                    # Write-blocker enforcement, dd command builder
+│   └── acquisition/
+│       ├── base.py                  # AcquisitionEngine (pure Python)
+│       ├── raw.py                   # RawWriter
+│       ├── ewf.py                   # EwfWriter
+│       └── verify.py                # Post-acquisition remote hash verification
+├── audit/                           # Tamper-evident logging
+│   ├── logger.py                    # ForensicLogger (hash-chained JSONL)
+│   └── verify.py                    # AuditChainVerifier
+├── report/
+│   └── report_engine.py             # TXT + PDF forensic reporting
+└── deps/
+    └── dependency_checker.py        # Runtime dependency validation
 ~~~
 
-Separation of concerns:
+### Design Principles
 
-- GUI → user interaction layer
-- threads → acquisition execution
-- logger → cryptographic audit engine
-- report_engine → evidentiary documentation
-- dependency_checker → runtime validation
+- **Layered separation** — UI knows nothing about SSH; core knows nothing about Qt
+- **Headless-testable engine** — `AcquisitionEngine` uses callbacks, not Qt signals
+- **State machine enforcement** — illegal workflow transitions are impossible
+- **Fail-secure behavior** — audit failures halt acquisition
+- **Tamper-evident logging** — deterministic hash chains with cryptographic sealing
+- **Minimal implicit trust** — every component operates with least privilege
 
-Design goals:
+### Testing
 
-- Fail-secure behavior
-- Tamper-evident logging
-- Deterministic record generation
-- Minimal implicit trust assumptions
+~~~bash
+python -m pytest tests/ -v
+~~~
+
+Unit tests cover:
+- Session state machine (valid/invalid transitions)
+- StreamHasher (incremental hashing correctness)
+- RawWriter (write/close behavior)
+- Policy helpers (dd command construction)
+- AuditChainVerifier (chain integrity validation)
 
 ---
 

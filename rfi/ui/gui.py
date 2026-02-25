@@ -2,6 +2,7 @@
 # Description: Main GUI module for Remote Forensic Imager.
 # Features: Case Wizard workflow, structured forensic logging, secure acquisition orchestration,
 #          optional write-blocker, post-acq verification, and report generation.
+# Now integrates the Session state machine for forensic workflow enforcement.
 
 import sys
 import os
@@ -26,10 +27,11 @@ from PyQt6.uic import loadUi
 from PyQt6.QtGui import QTextCursor
 from qt_material import apply_stylesheet
 
-from codes.dependency_checker import run_dependency_check
-from codes.logger import ForensicLogger, ForensicLoggerError
-from codes.report_engine import ReportEngine
-from codes.threads import AcquisitionWorker
+from rfi.deps.dependency_checker import run_dependency_check
+from rfi.audit.logger import ForensicLogger, ForensicLoggerError
+from rfi.report.report_engine import ReportEngine
+from rfi.ui.workers import AcquisitionWorker
+from rfi.core.session import Session, SessionState, SessionStateError
 
 
 class CaseWizard(QDialog):
@@ -125,13 +127,19 @@ class CaseWizard(QDialog):
 class ForensicApp(QMainWindow):
     def __init__(self, case_no: str, examiner: str, evidence_dir: str):
         super().__init__()
+
+        # Locate UI file relative to this module
+        ui_path = os.path.join(os.path.dirname(__file__), "resources", "forensic_qt6.ui")
         try:
-            loadUi("forensic_qt6.ui", self)
+            loadUi(ui_path, self)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"UI file could not be loaded!\n{e}")
             sys.exit(1)
 
         self.setWindowTitle("Remote Forensic Imager")
+
+        # ── Session state machine ────────────────────────────────────
+        self.session = Session()
 
         self.logger = ForensicLogger()
         self.output_dir = evidence_dir
@@ -140,6 +148,8 @@ class ForensicApp(QMainWindow):
             self.logger.set_context(case_no, examiner, self.output_dir)
             self.case_no = self.logger.case_no
             self.examiner = self.logger.examiner
+            # Bind session context
+            self.session.bind_context(self.case_no, self.examiner, self.output_dir)
         except ForensicLoggerError as e:
             QMessageBox.critical(self, "Critical Audit Failure", f"Could not initialize Audit Trail.\n\nError: {e}")
             sys.exit(1)
@@ -292,6 +302,13 @@ class ForensicApp(QMainWindow):
         if not self.validate_network_inputs(ip, user):
             return
 
+        # Session state guard
+        try:
+            self.session.begin_acquisition()
+        except SessionStateError as e:
+            QMessageBox.warning(self, "Workflow Error", str(e))
+            return
+
         throttle_limit = 0.0
         if hasattr(self, "chk_throttle") and self.chk_throttle.isChecked():
             try:
@@ -384,6 +401,15 @@ class ForensicApp(QMainWindow):
         remote_sha256 = data.get("remote_sha256", "SKIPPED")
         hash_match = data.get("hash_match", None)
 
+        # Session: transition through verification → seal
+        verify_hash = hasattr(self, "chk_verify") and self.chk_verify.isChecked()
+        try:
+            if verify_hash and remote_sha256 != "SKIPPED":
+                self.session.begin_verification()
+            self.session.seal()
+        except SessionStateError as e:
+            self.log(f"Session state warning: {e}", "WARNING", "SESSION_WARNING")
+
         duration = "UNKNOWN"
         if self.start_time:
             duration = str(datetime.now(timezone.utc) - self.start_time).split(".")[0]
@@ -435,6 +461,12 @@ class ForensicApp(QMainWindow):
         }
 
         ReportEngine.generate_reports(report_data)
+
+        # Session: finalize
+        try:
+            self.session.finalize()
+        except SessionStateError as e:
+            self.log(f"Session state warning: {e}", "WARNING", "SESSION_WARNING")
 
         self.export_console_to_folder()
         QMessageBox.information(self, "Complete", "Forensic acquisition completed.\nReports saved.\n\nAudit trail is sealed.")

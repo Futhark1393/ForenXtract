@@ -1,5 +1,5 @@
 # Author: Futhark1393
-# codes/dependency_checker.py
+# Description: Runtime dependency checker.
 
 import importlib
 import subprocess

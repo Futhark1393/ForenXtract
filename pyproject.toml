@@ -14,4 +14,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["codes"]
+packages = ["rfi"]

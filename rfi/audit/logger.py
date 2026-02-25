@@ -59,7 +59,6 @@ class ForensicLogger:
 
                 self.log_file_path = new_log_path
 
-                # Log context binding explicitly as coming from the logger module.
                 self._internal_log_unlocked(
                     "Session context successfully bound to evidence directory.",
                     "INFO",
@@ -121,7 +120,6 @@ class ForensicLogger:
         try:
             log_entry["prev_hash"] = self.prev_hash
 
-            # Compute entry hash deterministically (without entry_hash present).
             entry_json = json.dumps(log_entry, sort_keys=True)
             entry_hash = hashlib.sha256(entry_json.encode("utf-8")).hexdigest()
 
@@ -142,7 +140,6 @@ class ForensicLogger:
             if not self.log_file_path or not os.path.exists(self.log_file_path):
                 return "UNAVAILABLE", False
 
-            # IMPORTANT: provide source_module to match the method signature.
             self._internal_log_unlocked(
                 "Initiating cryptographic seal of audit trail.",
                 "INFO",
@@ -150,7 +147,6 @@ class ForensicLogger:
                 source_module="logger",
             )
 
-            # After this point, no further log() calls are allowed.
             self._is_sealed = True
 
             hasher = hashlib.sha256()
@@ -160,7 +156,6 @@ class ForensicLogger:
                         hasher.update(chunk)
                 final_hash = hasher.hexdigest()
 
-                # Make read-only (best-effort). Immutable flag may fail without privilege.
                 os.chmod(self.log_file_path, 0o444)
 
                 chattr_success = False
@@ -179,49 +174,3 @@ class ForensicLogger:
             except OSError as e:
                 print(f"CRITICAL: Failed to seal audit trail: {e}", file=sys.stderr)
                 return "ERROR_CALCULATING_HASH", False
-
-
-class AuditChainVerifier:
-    @staticmethod
-    def verify_chain(filepath: str) -> tuple[bool, str]:
-        if not os.path.exists(filepath):
-            return False, "File not found."
-
-        current_prev_hash = hashlib.sha256(b"FORENSIC_GENESIS_BLOCK").hexdigest()
-        line_number = 0
-
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                for line in f:
-                    line_number += 1
-                    if not line.strip():
-                        continue
-
-                    entry = json.loads(line)
-                    entry_copy = dict(entry)
-
-                    claimed_prev = entry_copy.get("prev_hash")
-                    claimed_entry = entry_copy.pop("entry_hash", None)
-
-                    if not claimed_entry:
-                        return False, (
-                            f"Tampering detected: 'entry_hash' missing at line {line_number}."
-                        )
-
-                    if claimed_prev != current_prev_hash:
-                        return (
-                            False,
-                            f"Chain broken at line {line_number}. Expected prev: {current_prev_hash}, found: {claimed_prev}",
-                        )
-
-                    reconstructed_json = json.dumps(entry_copy, sort_keys=True)
-                    reconstructed_hash = hashlib.sha256(reconstructed_json.encode("utf-8")).hexdigest()
-
-                    if reconstructed_hash != claimed_entry:
-                        return False, f"Entry manipulation detected at line {line_number}. Hash mismatch."
-
-                    current_prev_hash = claimed_entry
-
-            return True, f"Chain verified successfully. {line_number} cryptographic records intact."
-        except Exception as e:
-            return False, f"Verification error at line {line_number}: {str(e)}"
