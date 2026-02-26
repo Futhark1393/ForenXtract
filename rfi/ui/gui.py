@@ -472,7 +472,7 @@ class ForensicApp(QMainWindow):
         QMessageBox.information(self, "Complete", "Forensic acquisition completed.\nReports saved.\n\nAudit trail is sealed.")
 
 
-if __name__ == "__main__":
+def main() -> None:
     py_missing, native_missing = run_dependency_check()
     if py_missing or native_missing:
         error_msg = "Missing Dependencies Detected:\n\n"
@@ -495,3 +495,7 @@ if __name__ == "__main__":
     window = ForensicApp(wizard.case_no, wizard.examiner, wizard.evidence_dir)
     window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
