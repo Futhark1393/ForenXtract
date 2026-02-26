@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Futhark1393/Remote-Forensic-Imager/actions/workflows/python-ci.yml/badge.svg)
 
-**Author:** Futhark1393 · **Version:** 3.1.0 · **License:** MIT
+**Author:** Futhark1393 · **Version:** 3.2.0 · **License:** MIT
 
 Remote Forensic Imager (RFI) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**. It enforces structured forensic workflows through an explicit session state machine, generates a cryptographically hash-chained audit trail (JSONL), and produces TXT/PDF forensic reports.
 
@@ -133,18 +133,18 @@ rfi-acquire \
 
 # Interface Preview
 
-## v3.1.0 — Updated GUI
+## v3.2.0 — LZ4 Compression Support
 
 ![RFI v3.1.0 GUI](screenshots/main_ui_v310.png)
 
 The GUI now mirrors all CLI capabilities across 6 structured sections:
 
-| # | Section | What's new in v3.1.0 |
+| # | Section | What's new in v3.2.0 |
 |---|---------|----------------------|
 | 1 | Case Identification | *(unchanged)* |
 | 2 | Remote Server (SSH) | *(unchanged)* |
 | 3 | Evidence Target | *(unchanged)* |
-| 4 | Acquisition Options | **Format dropdown** (RAW / E01 / AFF4) replaces pop-up dialog |
+| 4 | Acquisition Options | **Format dropdown** (RAW / **RAW+LZ4** / E01 / AFF4) — **LZ4 compression** (~50% ratio, fast) |
 | 5 | Live Triage | **Granular checkboxes** — Network, Processes, Memory, Hash EXEs |
 | 6 | Advanced | **Signing key** picker + **SIEM/Syslog** fields (host, port, UDP/TCP, CEF) |
 

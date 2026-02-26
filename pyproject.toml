@@ -1,6 +1,6 @@
 [project]
 name = "remote-forensic-imager"
-version = "3.1.0"
+version = "3.2.0"
 description = "Remote forensic acquisition tool with structured audit logging and report generation"
 authors = [{ name = "Futhark1393" }]
 readme = "README.md"
@@ -12,6 +12,7 @@ dependencies = [
     "paramiko>=3.0",
     "fpdf2>=2.7.0",
     "cryptography>=42.0",
+    "lz4>=4.0.0",
 ]
 
 [project.optional-dependencies]
