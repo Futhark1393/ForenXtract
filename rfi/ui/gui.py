@@ -35,11 +35,13 @@ from rfi.core.session import Session, SessionState, SessionStateError
 
 _FORMAT_MAP = {
     "RAW (.raw)": "RAW",
+    "RAW+LZ4 (.raw.lz4)": "RAW+LZ4",
     "E01 (EnCase)": "E01",
     "AFF4": "AFF4",
 }
 _FORMAT_EXT = {
     "RAW": ".raw",
+    "RAW+LZ4": ".raw.lz4",
     "E01": ".E01",
     "AFF4": ".aff4",
 }
@@ -260,7 +262,7 @@ class ForensicApp(QMainWindow):
         if hasattr(self, "chk_siem_cef"):
             self.chk_siem_cef.setToolTip("Use CEF (Common Event Format) instead of RFC 5424 syslog format.")
         if hasattr(self, "cmb_format"):
-            self.cmb_format.setToolTip("RAW: raw disk image. E01: EnCase format (needs libewf). AFF4: requires pyaff4.")
+            self.cmb_format.setToolTip("RAW: raw disk image. RAW+LZ4: LZ4 compressed (fast, ~50% ratio). E01: EnCase format (needs libewf). AFF4: requires pyaff4.")
 
     # ── Slot helpers ─────────────────────────────────────────────────
 

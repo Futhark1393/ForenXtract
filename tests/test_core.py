@@ -11,6 +11,7 @@ import pytest
 from rfi.core.session import Session, SessionState, SessionStateError
 from rfi.core.hashing import StreamHasher
 from rfi.core.acquisition.raw import RawWriter
+from rfi.core.acquisition.lz4_writer import LZ4Writer, LZ4_AVAILABLE
 from rfi.core.policy import build_dd_command
 from rfi.audit.logger import ForensicLogger, ForensicLoggerError
 from rfi.audit.verify import AuditChainVerifier
@@ -131,6 +132,119 @@ class TestRawWriter:
 
             with open(path, "rb") as f:
                 assert f.read() == b"hello world"
+        finally:
+            os.unlink(path)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# LZ4Writer tests
+# ═══════════════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not LZ4_AVAILABLE, reason="lz4 not installed")
+class TestLZ4Writer:
+    def test_lz4_compress_and_decompress(self):
+        """Write compressed data and verify decompression."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".raw.lz4") as tmp:
+            path = tmp.name
+
+        try:
+            # Write data through LZ4Writer
+            test_data = b"hello " * 100 + b"world" * 50  # Repetitive data compresses well
+            w = LZ4Writer(path)
+            w.write(test_data)
+            w.close()
+
+            # Verify compressed file is smaller
+            compressed_size = os.path.getsize(path)
+            original_size = len(test_data)
+            assert compressed_size < original_size, "Compression did not reduce file size"
+
+            # Decompress and verify
+            import lz4.frame
+            with open(path, "rb") as f:
+                decompressed = lz4.frame.decompress(f.read())
+            assert decompressed == test_data
+
+        finally:
+            os.unlink(path)
+
+    def test_lz4_incremental_writes(self):
+        """Test multiple write() calls produce correct compressed output."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".raw.lz4") as tmp:
+            path = tmp.name
+
+        try:
+            # Write in chunks
+            w = LZ4Writer(path)
+            chunk1 = b"chunk1 " * 50
+            chunk2 = b"chunk2 " * 50
+            chunk3 = b"chunk3 " * 50
+            w.write(chunk1)
+            w.write(chunk2)
+            w.write(chunk3)
+            w.close()
+
+            # Decompress and verify
+            import lz4.frame
+            with open(path, "rb") as f:
+                decompressed = lz4.frame.decompress(f.read())
+            expected = chunk1 + chunk2 + chunk3
+            assert decompressed == expected
+
+        finally:
+            os.unlink(path)
+
+    def test_lz4_empty_file(self):
+        """Test LZ4 compression of empty data."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".raw.lz4") as tmp:
+            path = tmp.name
+
+        try:
+            w = LZ4Writer(path)
+            w.close()
+
+            # File should have LZ4 frame header but no data
+            file_size = os.path.getsize(path)
+            assert file_size > 0, "LZ4 frame should have header even for empty data"
+
+            # Decompress and verify empty result
+            import lz4.frame
+            with open(path, "rb") as f:
+                decompressed = lz4.frame.decompress(f.read())
+            assert decompressed == b""
+
+        finally:
+            os.unlink(path)
+
+    def test_lz4_large_binary_data(self):
+        """Test with larger binary-like data (similar to disk imaging)."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".raw.lz4") as tmp:
+            path = tmp.name
+
+        try:
+            # Simulate 100 MB of semi-random data
+            chunk_size = 1024 * 1024  # 1 MB
+            test_data = b""
+            w = LZ4Writer(path)
+            
+            for i in range(10):  # 10 MB total
+                chunk = bytes([(j + i) % 256 for j in range(chunk_size)])
+                test_data += chunk
+                w.write(chunk)
+            w.close()
+
+            # Verify compression ratio
+            compressed_size = os.path.getsize(path)
+            original_size = len(test_data)
+            ratio = compressed_size / original_size
+            assert ratio < 0.95, f"Compression ratio {ratio:.2%} should be < 95% for repetitive data"
+
+            # Decompress and verify
+            import lz4.frame
+            with open(path, "rb") as f:
+                decompressed = lz4.frame.decompress(f.read())
+            assert decompressed == test_data
+
         finally:
             os.unlink(path)
 

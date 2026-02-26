@@ -110,6 +110,7 @@
            <item>
             <widget class="QComboBox" name="cmb_format">
              <item><property name="text"><string>RAW (.raw)</string></property></item>
+             <item><property name="text"><string>RAW+LZ4 (.raw.lz4)</string></property></item>
              <item><property name="text"><string>E01 (EnCase)</string></property></item>
              <item><property name="text"><string>AFF4</string></property></item>
             </widget>

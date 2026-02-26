@@ -33,10 +33,12 @@ The installer:
 | *(none)* | Full install with E01 support |
 | `--no-ewf` | Skip libewf compilation (faster, RAW only) |
 | `--with-aff4` | Also install `pyaff4` for AFF4 format support |
+| `--with-lz4` | Also install `lz4` for compression support |
 
 ~~~bash
 sudo bash RFI_install.sh --no-ewf        # fast install, RAW only
 sudo bash RFI_install.sh --with-aff4     # full install + AFF4
+sudo bash RFI_install.sh --with-lz4      # full install + LZ4 compression
 ~~~
 
 After install, open a **new terminal** and:
@@ -188,7 +190,7 @@ Illegal transitions raise `SessionStateError` and halt operation.
 - Optional post-acquisition remote SHA-256 verification
 - Safe Mode (`conv=noerror,sync`), write-blocker, throttling
 - Automatic retry on connection loss (up to 3 retries with resume)
-- Output formats: **RAW**, **E01**, **AFF4** (optional)
+- Output formats: **RAW**, **RAW+LZ4** (compressed), **E01**, **AFF4** (optional)
 
 ---
 
@@ -204,7 +206,7 @@ All parameters:
 | `--disk` | Target block device (required) |
 | `--output-dir` | Evidence output directory (required) |
 | `--case`, `--examiner` | Case metadata (required) |
-| `--format RAW\|E01\|AFF4` | Evidence format (default: RAW) |
+| `--format RAW\|RAW+LZ4\|E01\|AFF4` | Evidence format (default: RAW) |
 | `--verify` | Post-acquisition remote SHA-256 check |
 | `--safe-mode` | `conv=noerror,sync` (default: on) |
 | `--write-blocker` | Software write-blocker |
@@ -251,6 +253,21 @@ rfi-verify AuditTrail_CASE_SESSION.jsonl --json   # machine-readable output
 
 Exit codes: `0` = PASS · `2` = FAIL (tamper detected) · `1` = Error
 
+---
+
+# Evidence Formats
+
+| Format | Extension | Pros | Cons | Requirements |
+|--------|-----------|------|------|--------------|
+| **RAW** | `.raw` | Fast, standard, decompress-anywhere | Large file size (uncompressed) | *(none)* |
+| **RAW+LZ4** | `.raw.lz4` | Fast compression (~50% ratio), LZ4 frame standard | Requires `lz4` to decompress | `lz4>=4.0.0` |
+| **E01** | `.E01` | EnCase compatible, industry standard | Slower, requires libewf | `libewf2` (system) + `pyewf` (Python) |
+| **AFF4** | `.aff4` | Open standard, flexible container | Less industry adoption | `pyaff4` |
+
+### Hash Computation
+
+In all formats, evidence hash (MD5 + SHA-256) is computed on **raw disk data _before_ compression**. This ensures integrity of the original evidence, not the container format.
+
 ## Generate Signing Keypair
 
 ~~~bash
@@ -295,7 +312,7 @@ rfi/
 │   ├── policy.py               # Write-blocker, dd command builder
 │   └── acquisition/
 │       ├── base.py             # AcquisitionEngine
-│       ├── raw.py / ewf.py / aff4.py
+│       ├── raw.py / ewf.py / aff4.py / lz4_writer.py
 │       └── verify.py
 ├── audit/                      # Tamper-evident logging + signing
 │   ├── logger.py               # ForensicLogger (hash-chained JSONL)
@@ -312,7 +329,7 @@ rfi/
 
 | File | Description |
 |------|-------------|
-| `evidence_<CASE>_<UTC>.raw` / `.E01` / `.aff4` | Disk image |
+| `evidence_<CASE>_<UTC>.raw` / `.raw.lz4` / `.E01` / `.aff4` | Disk image (RAW, compressed, E01, or AFF4) |
 | `AuditTrail_<CASE>_<SESSION>.jsonl` | Tamper-evident audit log |
 | `AuditTrail_<CASE>_<SESSION>.jsonl.sig` | Ed25519 detached signature |
 | `Report_<CASE>_<UTC>.pdf` / `.txt` | Forensic report |
@@ -328,7 +345,7 @@ rfi/
 python -m pytest tests/ -v
 ~~~
 
-24 unit tests covering: session state machine, hashing, writing, dd command building, audit chain integrity, Ed25519 signing, report generation.
+28 unit tests covering: session state machine, hashing, RAW writing, LZ4 compression, dd command building, audit chain integrity, Ed25519 signing, report generation.
 
 ---
 

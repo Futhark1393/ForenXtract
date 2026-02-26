@@ -12,6 +12,7 @@ import paramiko
 from rfi.core.hashing import StreamHasher
 from rfi.core.policy import ssh_exec, apply_write_blocker, build_dd_command
 from rfi.core.acquisition.raw import RawWriter
+from rfi.core.acquisition.lz4_writer import LZ4Writer, LZ4_AVAILABLE
 from rfi.core.acquisition.ewf import EwfWriter, EWF_AVAILABLE
 from rfi.core.acquisition.aff4 import AFF4Writer, AFF4_AVAILABLE
 from rfi.core.acquisition.verify import verify_source_hash
@@ -146,6 +147,13 @@ class AcquisitionEngine:
             writer = AFF4Writer(self.output_file)
         elif self.format_type == "E01" and EWF_AVAILABLE:
             writer = EwfWriter(self.output_file)
+        elif self.format_type == "RAW+LZ4":
+            if not LZ4_AVAILABLE:
+                raise AcquisitionError(
+                    "RAW+LZ4 format selected but lz4 is not installed.\n"
+                    "Install with: pip install lz4>=4.0.0"
+                )
+            writer = LZ4Writer(self.output_file)
         else:
             writer = RawWriter(self.output_file)
 
