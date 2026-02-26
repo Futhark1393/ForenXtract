@@ -32,15 +32,29 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--case", required=True, help="Case number")
     p.add_argument("--examiner", required=True, help="Examiner name")
 
-    # Optional
-    p.add_argument("--format", choices=["RAW", "E01"], default="RAW", help="Evidence format (default: RAW)")
+    # Optional — acquisition
+    p.add_argument("--format", choices=["RAW", "E01", "AFF4"], default="RAW", help="Evidence format (default: RAW)")
     p.add_argument("--verify", action="store_true", help="Post-acquisition remote SHA-256 verification")
     p.add_argument("--safe-mode", action="store_true", default=True, help="Safe mode: conv=noerror,sync (default: on)")
     p.add_argument("--no-safe-mode", action="store_true", help="Disable safe mode")
     p.add_argument("--write-blocker", action="store_true", help="Apply software write-blocker")
-    p.add_argument("--triage", action="store_true", help="Run live triage before acquisition")
     p.add_argument("--throttle", type=float, default=0.0, help="Bandwidth limit in MB/s (0 = unlimited)")
     p.add_argument("--signing-key", help="Path to Ed25519 private key for audit trail signing")
+
+    # Optional — triage
+    p.add_argument("--triage", action="store_true", help="Run live triage (network + processes) before acquisition")
+    p.add_argument("--triage-network", action="store_true", default=True, help="Triage: collect network state (default: on with --triage)")
+    p.add_argument("--no-triage-network", action="store_true", help="Triage: skip network state collection")
+    p.add_argument("--triage-processes", action="store_true", default=True, help="Triage: collect process list (default: on with --triage)")
+    p.add_argument("--no-triage-processes", action="store_true", help="Triage: skip process list collection")
+    p.add_argument("--triage-memory", action="store_true", help="Triage: collect memory metadata (/proc/meminfo, modules)")
+    p.add_argument("--no-hash-exes", action="store_true", help="Triage: skip per-process SHA-256 exe hashing")
+
+    # Optional — SIEM / Syslog
+    p.add_argument("--siem-host", help="Syslog/SIEM server hostname or IP")
+    p.add_argument("--siem-port", type=int, default=514, help="Syslog/SIEM server port (default: 514)")
+    p.add_argument("--siem-protocol", choices=["UDP", "TCP"], default="UDP", help="Syslog protocol (default: UDP)")
+    p.add_argument("--siem-cef", action="store_true", help="Use CEF output format instead of RFC 5424")
 
     return p.parse_args()
 
@@ -70,16 +84,32 @@ def main() -> int:
     if args.no_safe_mode:
         safe_mode = False
 
+    triage_network   = not args.no_triage_network
+    triage_processes = not args.no_triage_processes
+    triage_memory    = args.triage_memory
+    triage_hash_exes = not args.no_hash_exes
+
     output_dir = os.path.abspath(args.output_dir)
     if not os.path.isdir(output_dir):
         print(f"ERROR: Output directory does not exist: {output_dir}", file=sys.stderr)
         return 1
 
+    # ── Optional SIEM / Syslog handler ───────────────────────────────
+    syslog_handler = None
+    if args.siem_host:
+        from rfi.audit.syslog_handler import SyslogHandler
+        syslog_handler = SyslogHandler(
+            host=args.siem_host,
+            port=args.siem_port,
+            protocol=args.siem_protocol,
+            cef_mode=args.siem_cef,
+        )
+
     # ── Session ──────────────────────────────────────────────────────
     session = Session()
 
     # ── Logger ───────────────────────────────────────────────────────
-    logger = ForensicLogger()
+    logger = ForensicLogger(syslog_handler=syslog_handler)
     try:
         logger.set_context(args.case, args.examiner, output_dir)
     except ForensicLoggerError as e:
@@ -120,6 +150,7 @@ def main() -> int:
         f"{C3}Format{C0}    {args.format}",
         f"{C3}Output{C0}    {output_dir}",
         f"{C3}Verify{C0}    {'✓' if args.verify else '✗'}  {C3}Safe{C0} {'✓' if safe_mode else '✗'}  {C3}WBlock{C0} {'✓' if args.write_blocker else '✗'}",
+        f"{C3}Triage{C0}    {'✓' if args.triage else '✗'}  {C3}SIEM{C0} {'✓ ' + args.siem_host if args.siem_host else '✗'}",
     ]
 
     print()
@@ -165,6 +196,10 @@ def main() -> int:
         throttle_limit=args.throttle,
         safe_mode=safe_mode,
         run_triage=args.triage,
+        triage_network=triage_network,
+        triage_processes=triage_processes,
+        triage_memory=triage_memory,
+        triage_hash_exes=triage_hash_exes,
         output_dir=output_dir,
         verify_hash=args.verify,
         write_blocker=args.write_blocker,
@@ -265,6 +300,10 @@ def main() -> int:
         session.finalize()
     except SessionStateError:
         pass
+
+    # ── Cleanup SIEM handler ────────────────────────────────────
+    if syslog_handler is not None:
+        syslog_handler.close()
 
     print("=" * 60)
     print("  DONE — Audit trail sealed.")

@@ -20,7 +20,15 @@ class ForensicLoggerError(Exception):
 
 
 class ForensicLogger:
-    def __init__(self):
+    def __init__(self, syslog_handler=None):
+        """
+        Parameters
+        ----------
+        syslog_handler : SyslogHandler | None
+            Optional SIEM forwarding handler.  Each audit entry is emitted
+            via this handler immediately after the local JSONL write.
+            If None, no remote forwarding occurs.
+        """
         self.session_id = str(uuid.uuid4())
         self.case_no = "UNASSIGNED"
         self.examiner = "UNASSIGNED"
@@ -30,6 +38,7 @@ class ForensicLogger:
         self.log_file_path = f"temp_audit_{self.session_id}.jsonl"
         self.prev_hash = hashlib.sha256(b"FORENSIC_GENESIS_BLOCK").hexdigest()
         self._is_sealed = False
+        self._syslog = syslog_handler  # optional SyslogHandler
 
     def sanitize_filename(self, name: str) -> str:
         clean = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(name).strip())
@@ -132,6 +141,14 @@ class ForensicLogger:
                 f.write(final_json + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+
+            # ── Syslog / SIEM forwarding (best-effort) ──────────────
+            if self._syslog is not None:
+                try:
+                    self._syslog.emit(log_entry)
+                except Exception:
+                    pass  # never let syslog failure propagate
+
         except OSError as e:
             raise ForensicLoggerError(f"File System Write Error: {str(e)}")
 

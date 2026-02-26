@@ -1,9 +1,26 @@
+Metadata-Version: 2.4
+Name: remote-forensic-imager
+Version: 3.1.0
+Summary: Remote forensic acquisition tool with structured audit logging and report generation
+Author: Futhark1393
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: PyQt6>=6.6
+Requires-Dist: qt-material>=2.14
+Requires-Dist: paramiko>=3.0
+Requires-Dist: fpdf2>=2.7.0
+Requires-Dist: cryptography>=42.0
+Provides-Extra: aff4
+Requires-Dist: pyaff4; extra == "aff4"
+Dynamic: license-file
+
 # Remote Forensic Imager (RFI)
 
 ![CI](https://github.com/Futhark1393/Remote-Forensic-Imager/actions/workflows/python-ci.yml/badge.svg)
 
 **Author:** Futhark1393  
-**Version:** 3.1.0  
+**Version:** 3.0.0  
 **License:** MIT  
 
 Remote Forensic Imager (RFI) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**.
@@ -87,7 +104,6 @@ Illegal transitions (e.g., acquiring before context binding, logging after seali
   - `chattr +i` (if available)
 - **Optional Ed25519 digital signature** (detached `.sig` file)
 - Offline chain verification + signature verification support
-- **Optional SIEM/Syslog forwarding** (RFC 5424 over UDP/TCP, CEF output mode)
 
 ## Acquisition & Integrity
 
@@ -138,98 +154,24 @@ All parameters:
 | `--disk` | Target block device (required) |
 | `--output-dir` | Evidence output directory (required) |
 | `--case`, `--examiner` | Case metadata (required) |
-| `--format RAW\|E01\|AFF4` | Evidence format (default: RAW) |
+| `--format RAW\|E01` | Evidence format (default: RAW) |
 | `--verify` | Post-acquisition remote SHA-256 check |
 | `--safe-mode` | `conv=noerror,sync` (default: on) |
 | `--write-blocker` | Software write-blocker |
+| `--triage` | Pre-acquisition live triage |
 | `--throttle N` | Bandwidth limit in MB/s |
 | `--signing-key PATH` | Ed25519 key for audit trail signing |
-
-### Triage Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `--triage` | Enable live triage (network + processes) before acquisition |
-| `--no-triage-network` | Skip network state collection |
-| `--no-triage-processes` | Skip process list collection |
-| `--triage-memory` | Collect memory metadata (`/proc/meminfo`, modules) |
-| `--no-hash-exes` | Skip per-process SHA-256 executable hashing |
-
-### SIEM / Syslog Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `--siem-host HOST` | Syslog/SIEM server hostname or IP |
-| `--siem-port PORT` | Syslog port (default: 514) |
-| `--siem-protocol UDP\|TCP` | Syslog protocol (default: UDP) |
-| `--siem-cef` | Use CEF (Common Event Format) instead of RFC 5424 |
-
-Example with triage + SIEM:
-
-~~~bash
-rfi-acquire \
-  --ip 10.0.0.1 --user ubuntu --key ~/.ssh/key.pem \
-  --disk /dev/sda --output-dir ./evidence \
-  --case 2026-001 --examiner "Investigator" \
-  --triage --triage-memory \
-  --siem-host 10.0.0.100 --siem-port 514 --siem-protocol TCP --siem-cef
-~~~
-
-## Live Triage
-
-When `--triage` is enabled, RFI collects volatile evidence from the target **before** acquisition begins. All collection is strictly **read-only** — nothing is written or loaded onto the target system.
-
-### Network State
-
-Collected via `ss`, `arp`, `ip route`, `ip neigh`, and `/etc/resolv.conf`:
-
-- Active TCP/UDP connections
-- ARP/neighbour table
-- Routing table
-- Network interface addresses
-- DNS configuration
-
-Output: `NetworkState_<CASE>_<UTC>.txt` + `NetworkState_<CASE>_<UTC>.json`
-
-### Running Processes
-
-Collected via `ps aux`. SHA-256 hash of each process executable is computed via `/proc/<pid>/exe` (read-only, no target modification):
-
-Output: `ProcessList_<CASE>_<UTC>.txt` + `ProcessList_<CASE>_<UTC>.json`
-
-### Memory State (`--triage-memory`)
-
-Collected without modifying the target:
-
-| Source | Description |
-|--------|-------------|
-| `/proc/meminfo` | Memory usage metadata (always available) |
-| `/proc/modules` | Loaded kernel modules list |
-| `/proc/kallsyms` | Symbol count (kernel integrity indicator) |
-| `/proc/kcore` | Full physical memory image (requires root, read-only stream) |
-| `/dev/lime*` | LiME device if already loaded by administrator |
-
-> [!NOTE]
-> RFI **never uploads kernel modules** to the target. Doing so would modify system state and breach chain of custody. LiME is only used if already present (loaded by a separate admin process before RFI connects).
-
-Output: `MemoryState_<CASE>_<UTC>.json`
 
 ## Verify Audit Chain
 
 ~~~bash
-rfi-verify AuditTrail_CASE_SESSION.jsonl
+python rfi_verify.py AuditTrail_CASE_SESSION.jsonl
 ~~~
 
 With digital signature verification:
 
 ~~~bash
-rfi-verify AuditTrail_CASE_SESSION.jsonl --pubkey rfi_signing.pub
-~~~
-
-Machine-readable JSON output (for scripting / SIEM ingestion):
-
-~~~bash
-rfi-verify AuditTrail_CASE_SESSION.jsonl --json
+python rfi_verify.py AuditTrail_CASE_SESSION.jsonl --pubkey rfi_signing.pub
 ~~~
 
 Exit codes:
@@ -253,13 +195,7 @@ Creates `rfi_signing.key` (private, keep secure) and `rfi_signing.pub` (public, 
 ~~~text
 rfi/
 ├── cli/                             # Headless CLI tools
-│   ├── acquire.py                   # CLI acquisition (no Qt dependency)
-│   └── verify.py                    # rfi-verify CLI (chain + sig verification)
-├── triage/                          # Live triage collectors (read-only)
-│   ├── orchestrator.py              # TriageOrchestrator (coordinates all collectors)
-│   ├── network.py                   # Network state (ss, arp, ip route, DNS)
-│   ├── processes.py                 # Process list + per-exe SHA-256 hashing
-│   └── memory.py                    # Memory metadata (/proc/meminfo, kcore, LiME)
+│   └── acquire.py                   # CLI acquisition (no Qt dependency)
 ├── ui/                              # Qt / GUI layer
 │   ├── gui.py                       # CaseWizard + ForensicApp (Session-driven)
 │   ├── workers.py                   # Thin QThread wrapper (~70 lines, no business logic)
@@ -273,13 +209,11 @@ rfi/
 │       ├── base.py                  # AcquisitionEngine (pure Python)
 │       ├── raw.py                   # RawWriter
 │       ├── ewf.py                   # EwfWriter
-│       ├── aff4.py                  # AFF4Writer (requires pyaff4, optional)
 │       └── verify.py                # Post-acquisition remote hash verification
 ├── audit/                           # Tamper-evident logging + signing
-│   ├── logger.py                    # ForensicLogger (hash-chained JSONL + SIEM forwarding)
+│   ├── logger.py                    # ForensicLogger (hash-chained JSONL)
 │   ├── verify.py                    # AuditChainVerifier
-│   ├── signing.py                   # Ed25519 key generation, signing, verification
-│   └── syslog_handler.py            # SyslogHandler (RFC 5424 + CEF, UDP/TCP)
+│   └── signing.py                   # Ed25519 key generation, signing, verification
 ├── report/
 │   └── report_engine.py             # TXT + PDF forensic reporting
 └── deps/
@@ -294,7 +228,6 @@ rfi/
 - **Fail-secure behavior** — audit failures halt acquisition
 - **Tamper-evident logging** — deterministic hash chains with cryptographic sealing
 - **Minimal implicit trust** — every component operates with least privilege
-- **Read-only triage** — volatile evidence collected without modifying the target
 
 ### Testing
 
@@ -386,27 +319,6 @@ If E01 bindings are not installed:
 
 ---
 
-## 5) Optional: AFF4 Support
-
-AFF4 imaging requires **pyaff4**:
-
-~~~bash
-pip install pyaff4
-~~~
-
-Or install with the optional extra:
-
-~~~bash
-pip install -e ".[aff4]"
-~~~
-
-If pyaff4 is not installed:
-
-- RAW and E01 acquisition work normally
-- AFF4 option will be unavailable
-
----
-
 # Running
 
 ## GUI Mode
@@ -435,15 +347,12 @@ rfi-acquire --help
 
 Inside the selected Evidence Directory:
 
-- `evidence_<CASE>_<UTC>.raw`, `.E01`, or `.aff4`
+- `evidence_<CASE>_<UTC>.raw` or `.E01`
 - `AuditTrail_<CASE>_<SESSION>.jsonl`
 - `AuditTrail_<CASE>_<SESSION>.jsonl.sig` (if signing key provided)
 - `Report_<CASE>_<UTC>.pdf`
 - `Report_<CASE>_<UTC>.txt`
-- `NetworkState_<CASE>_<UTC>.txt` + `.json` (if `--triage` enabled)
-- `ProcessList_<CASE>_<UTC>.txt` + `.json` (if `--triage` enabled)
-- `MemoryState_<CASE>_<UTC>.json` (if `--triage-memory` enabled)
-- `MemoryDump_<CASE>_<UTC>.kcore` (if `/proc/kcore` accessible)
+- `Triage_<CASE>.txt` (if `--triage` enabled)
 
 ---
 

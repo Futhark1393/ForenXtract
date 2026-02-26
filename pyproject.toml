@@ -1,6 +1,6 @@
 [project]
 name = "remote-forensic-imager"
-version = "3.0.0"
+version = "3.1.0"
 description = "Remote forensic acquisition tool with structured audit logging and report generation"
 authors = [{ name = "Futhark1393" }]
 readme = "README.md"
@@ -14,10 +14,13 @@ dependencies = [
     "cryptography>=42.0",
 ]
 
+[project.optional-dependencies]
+aff4 = ["pyaff4"]
+
 [project.scripts]
 rfi = "rfi.ui.gui:main"
 rfi-acquire = "rfi.cli.acquire:main"
-rfi-verify = "rfi_verify:main"
+rfi-verify = "rfi.cli.verify:main"
 
-[tool.setuptools]
-packages = ["rfi"]
+[tool.setuptools.packages.find]
+where = ["."]

@@ -13,7 +13,9 @@ from rfi.core.hashing import StreamHasher
 from rfi.core.policy import ssh_exec, apply_write_blocker, build_dd_command
 from rfi.core.acquisition.raw import RawWriter
 from rfi.core.acquisition.ewf import EwfWriter, EWF_AVAILABLE
+from rfi.core.acquisition.aff4 import AFF4Writer, AFF4_AVAILABLE
 from rfi.core.acquisition.verify import verify_source_hash
+from rfi.triage.orchestrator import TriageOrchestrator
 
 
 class AcquisitionError(Exception):
@@ -46,6 +48,10 @@ class AcquisitionEngine:
         throttle_limit: float = 0.0,
         safe_mode: bool = True,
         run_triage: bool = False,
+        triage_network: bool = True,
+        triage_processes: bool = True,
+        triage_memory: bool = False,
+        triage_hash_exes: bool = True,
         output_dir: str = "",
         verify_hash: bool = False,
         write_blocker: bool = False,
@@ -62,6 +68,10 @@ class AcquisitionEngine:
         self.throttle_limit = throttle_limit
         self.safe_mode = safe_mode
         self.run_triage = run_triage
+        self.triage_network = triage_network
+        self.triage_processes = triage_processes
+        self.triage_memory = triage_memory
+        self.triage_hash_exes = triage_hash_exes
         self.output_dir = output_dir
         self.verify_hash = verify_hash
         self.write_blocker = write_blocker
@@ -94,21 +104,21 @@ class AcquisitionEngine:
         if not (self.run_triage and self.output_dir):
             return
 
-        self._emit(0, 0.0, "", 0, "Running Live Triage...")
-        triage_path = os.path.join(self.output_dir, f"Triage_{self.case_no}.txt")
+        def _status(msg: str) -> None:
+            self._emit(0, 0.0, "", 0, msg)
+
+        orchestrator = TriageOrchestrator(
+            run_network=self.triage_network,
+            run_processes=self.triage_processes,
+            run_memory=self.triage_memory,
+            hash_exes=self.triage_hash_exes,
+            attempt_kcore=False,   # read-only: never write to target
+            on_status=_status,
+        )
         try:
-            triage_script = (
-                "echo '=== SYSTEM & DATE ==='; uname -a; date; uptime; "
-                "echo '\\n=== NETWORK CONNECTIONS ==='; ss -tulnp || netstat -tulnp; "
-                "echo '\\n=== RUNNING PROCESSES ==='; ps aux"
-            )
-            t_out, t_err, _ = ssh_exec(ssh, f'sudo sh -c "{triage_script}"')
-            with open(triage_path, "w", encoding="utf-8") as tf:
-                tf.write(t_out + "\n")
-                if t_err:
-                    tf.write("\n--- STDERR ---\n" + t_err + "\n")
+            orchestrator.run(ssh, self.case_no, self.output_dir)
         except Exception:
-            pass  # triage is best-effort
+            pass  # triage is best-effort — acquisition must not fail
 
     # ── Main loop ───────────────────────────────────────────────────────
 
@@ -127,7 +137,14 @@ class AcquisitionEngine:
         start_time = time.time()
 
         # Open evidence writer
-        if self.format_type == "E01" and EWF_AVAILABLE:
+        if self.format_type == "AFF4":
+            if not AFF4_AVAILABLE:
+                raise AcquisitionError(
+                    "AFF4 format selected but pyaff4 is not installed.\n"
+                    "Install with: pip install pyaff4"
+                )
+            writer = AFF4Writer(self.output_file)
+        elif self.format_type == "E01" and EWF_AVAILABLE:
             writer = EwfWriter(self.output_file)
         else:
             writer = RawWriter(self.output_file)
