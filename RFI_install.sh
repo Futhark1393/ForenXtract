@@ -7,10 +7,22 @@
 #
 # Usage:
 #   sudo bash RFI_install.sh            # full install (recommended)
-#   bash RFI_install.sh --no-ewf        # skip libewf compilation
-#   bash RFI_install.sh --with-aff4     # also install pyaff4
+#   sudo bash RFI_install.sh --no-ewf   # skip libewf compilation
+#   sudo bash RFI_install.sh --with-aff4 # also install pyaff4
 
 set -euo pipefail
+
+# ── Determine real user (works with or without sudo) ─────────────────────────
+if [ -n "${SUDO_USER:-}" ]; then
+    REAL_USER="$SUDO_USER"
+    REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    REAL_USER="$USER"
+    REAL_HOME="$HOME"
+fi
+
+# Run a command as the real (non-root) user
+as_user() { sudo -u "$REAL_USER" "$@"; }
 
 # ── Parse flags ───────────────────────────────────────────────────────────────
 SKIP_EWF=false
@@ -20,7 +32,7 @@ for arg in "$@"; do
         --no-ewf)    SKIP_EWF=true ;;
         --with-aff4) WITH_AFF4=true ;;
         --help|-h)
-            echo "Usage: [sudo] bash RFI_install.sh [--no-ewf] [--with-aff4]"
+            echo "Usage: sudo bash RFI_install.sh [--no-ewf] [--with-aff4]"
             echo ""
             echo "  --no-ewf     Skip libewf compilation (skip E01 format support)"
             echo "  --with-aff4  Install pyaff4 for AFF4 format support"
@@ -30,7 +42,7 @@ done
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$APP_DIR/.venv"
-DESKTOP_FILE="$HOME/.local/share/applications/rfi.desktop"
+DESKTOP_FILE="$REAL_HOME/.local/share/applications/rfi.desktop"
 
 C_CYAN='\033[1;36m'
 C_GREEN='\033[1;32m'
@@ -58,8 +70,8 @@ info "Detecting OS and installing system dependencies..."
 if [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
     OS="fedora"
     info "Fedora / RHEL detected."
-    sudo dnf install -y \
-        gcc gcc-c++ make python3-devel python3-pip python3-venv \
+    dnf install -y \
+        gcc gcc-c++ make python3-devel python3-pip \
         zlib-devel openssl-devel wget \
         qt6-qtbase qt6-qtbase-gui mesa-libEGL mesa-libGL \
         > /dev/null 2>&1
@@ -67,8 +79,8 @@ if [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
 elif [ -f /etc/lsb-release ] || [ -f /etc/debian_version ]; then
     OS="debian"
     info "Ubuntu / Debian / Kali detected."
-    sudo apt-get update -qq
-    sudo apt-get install -y \
+    apt-get update -qq
+    apt-get install -y \
         gcc g++ make python3-dev python3-pip python3-venv \
         zlib1g-dev libssl-dev wget \
         libegl1 libgl1 libglib2.0-0 libxkbcommon0 libxkbcommon-x11-0 \
@@ -100,15 +112,15 @@ if [ "$SKIP_EWF" = false ]; then
         cd "$EWF_DIR"
         ./configure --prefix=/usr --enable-shared --enable-python > /dev/null 2>&1
         make > /dev/null 2>&1
-        sudo make install > /dev/null 2>&1
+        make install > /dev/null 2>&1
 
         # Inject shared libraries
         if [ -d "/usr/lib64" ]; then
-            sudo cp -a libewf/.libs/libewf.so* /usr/lib64/ 2>/dev/null || true
+            cp -a libewf/.libs/libewf.so* /usr/lib64/ 2>/dev/null || true
         else
-            sudo cp -a libewf/.libs/libewf.so* /usr/lib/ 2>/dev/null || true
+            cp -a libewf/.libs/libewf.so* /usr/lib/ 2>/dev/null || true
         fi
-        sudo ldconfig
+        ldconfig
 
         cd /tmp
         rm -rf "$EWF_TARBALL" "$EWF_DIR"
@@ -118,24 +130,30 @@ else
     info "Skipping libewf compilation (--no-ewf). E01 format will not be available."
 fi
 
-# ── 3. Create Python virtual environment ──────────────────────────────────────
+# ── 3. Create Python virtual environment (as real user) ───────────────────────
 cd "$APP_DIR"
 info "Creating Python virtual environment at $VENV_DIR ..."
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
+
+# Remove stale root-owned venv if it exists
+if [ -d "$VENV_DIR" ] && [ "$(stat -c '%U' "$VENV_DIR")" = "root" ]; then
+    warn "Removing existing root-owned venv..."
+    rm -rf "$VENV_DIR"
+fi
+
+as_user python3 -m venv "$VENV_DIR"
 
 info "Upgrading pip..."
-pip install --upgrade pip > /dev/null 2>&1
+as_user "$VENV_DIR/bin/pip" install --upgrade pip > /dev/null 2>&1
 
 # ── 4. Install RFI package ────────────────────────────────────────────────────
-info "Installing Remote Forensic Imager package (editable)..."
-pip install -e . > /dev/null 2>&1
+info "Installing Remote Forensic Imager package..."
+as_user "$VENV_DIR/bin/pip" install -e . > /dev/null 2>&1
 success "RFI package installed."
 
 # ── 5. Optional: AFF4 support ────────────────────────────────────────────────
 if [ "$WITH_AFF4" = true ]; then
     info "Installing pyaff4 (AFF4 format support)..."
-    pip install pyaff4 > /dev/null 2>&1 && \
+    as_user "$VENV_DIR/bin/pip" install pyaff4 > /dev/null 2>&1 && \
         success "pyaff4 installed — AFF4 format available." || \
         warn "pyaff4 installation failed — AFF4 format will not be available."
 else
@@ -149,16 +167,16 @@ for CMD in rfi rfi-acquire rfi-verify; do
     SRC="$VENV_DIR/bin/$CMD"
     DST="/usr/local/bin/$CMD"
     if [ -f "$SRC" ]; then
-        sudo ln -sf "$SRC" "$DST"
+        ln -sf "$SRC" "$DST"
         success "  $CMD → $DST"
     else
         warn "  $CMD binary not found in venv, skipping."
     fi
 done
 
-# ── 7. Desktop entry ──────────────────────────────────────────────────────────
+# ── 7. Desktop entry (as real user) ──────────────────────────────────────────
 info "Creating application menu shortcut..."
-mkdir -p "$HOME/.local/share/applications"
+as_user mkdir -p "$REAL_HOME/.local/share/applications"
 cat > "$DESKTOP_FILE" << EOL
 [Desktop Entry]
 Version=3.1
@@ -173,7 +191,7 @@ Terminal=false
 Categories=System;Security;Utility;
 Keywords=forensic;disk;imaging;acquisition;evidence;
 EOL
-chmod +x "$DESKTOP_FILE"
+as_user chmod +x "$DESKTOP_FILE"
 success "Desktop entry created."
 
 # ── Done ──────────────────────────────────────────────────────────────────────
