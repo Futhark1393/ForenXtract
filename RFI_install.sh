@@ -177,6 +177,8 @@ done
 # ── 7. Desktop entry (as real user) ──────────────────────────────────────────
 info "Creating application menu shortcut..."
 as_user mkdir -p "$REAL_HOME/.local/share/applications"
+# Remove any stale root-owned desktop file before writing as real user
+rm -f "$DESKTOP_FILE"
 # Write as real user (tee) so the file is owned by REAL_USER, not root
 as_user tee "$DESKTOP_FILE" > /dev/null << EOL
 [Desktop Entry]
