@@ -131,9 +131,26 @@ rfi-acquire \
 
 # Interface Preview
 
-| Case Wizard | Main UI | Acquisition |
-|:-----------:|:-------:|:-----------:|
-| ![Case Wizard](screenshots/case_wizard.png) | ![Main UI](screenshots/main_ui_idle.png) | ![Acquisition](screenshots/acquisition_running.png) |
+## v3.1.0 — Updated GUI
+
+![RFI v3.1.0 GUI](screenshots/main_ui_v310.png)
+
+The GUI now mirrors all CLI capabilities across 6 structured sections:
+
+| # | Section | What's new in v3.1.0 |
+|---|---------|----------------------|
+| 1 | Case Identification | *(unchanged)* |
+| 2 | Remote Server (SSH) | *(unchanged)* |
+| 3 | Evidence Target | *(unchanged)* |
+| 4 | Acquisition Options | **Format dropdown** (RAW / E01 / AFF4) replaces pop-up dialog |
+| 5 | Live Triage | **Granular checkboxes** — Network, Processes, Memory, Hash EXEs |
+| 6 | Advanced | **Signing key** picker + **SIEM/Syslog** fields (host, port, UDP/TCP, CEF) |
+
+### Earlier screenshots
+
+| Case Wizard | Disk Discovery | Acquisition Running |
+|:-----------:|:--------------:|:-------------------:|
+| ![Case Wizard](screenshots/case_wizard.png) | ![Disk Discovery](screenshots/disk_discovery.png) | ![Acquisition](screenshots/acquisition_running.png) |
 
 ---
 
