@@ -177,7 +177,8 @@ done
 # ── 7. Desktop entry (as real user) ──────────────────────────────────────────
 info "Creating application menu shortcut..."
 as_user mkdir -p "$REAL_HOME/.local/share/applications"
-cat > "$DESKTOP_FILE" << EOL
+# Write as real user (tee) so the file is owned by REAL_USER, not root
+as_user tee "$DESKTOP_FILE" > /dev/null << EOL
 [Desktop Entry]
 Version=3.1
 Type=Application
@@ -191,7 +192,6 @@ Terminal=false
 Categories=System;Security;Utility;
 Keywords=forensic;disk;imaging;acquisition;evidence;
 EOL
-as_user chmod +x "$DESKTOP_FILE"
 success "Desktop entry created."
 
 # ── Done ──────────────────────────────────────────────────────────────────────
