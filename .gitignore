@@ -21,3 +21,4 @@ __pycache__/
 *.egg-info/
 dist/
 build/screenshots/*.png
+screenshots/
