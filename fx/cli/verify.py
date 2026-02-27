@@ -22,18 +22,18 @@ def _print_banner() -> None:
     C0 = "\033[0m"
 
     logo = [
-        f"{C1} ██████╗  ███████╗ ██╗",
-        f"{C1} ██╔══██╗ ██╔════╝ ██║",
-        f"{C1} ██████╔╝ █████╗   ██║",
-        f"{C2} ██╔══██╗ ██╔══╝   ██║",
-        f"{C2} ██║  ██║ ██║      ██║",
-        f"{C2} ╚═╝  ╚═╝ ╚═╝      ╚═╝",
-        f"{DIM} ForenXtract — Audit Trail Verifier{C0}",
+        f"{C1} ███████╗  ██╗  ██╗",
+        f"{C1} ██╔════╝  ╚██╗██╔╝",
+        f"{C1} █████╗     ╚███╔╝",
+        f"{C2} ██╔══╝     ██╔██╗",
+        f"{C2} ██║       ██╔╝ ██╗",
+        f"{C2} ╚═╝       ╚═╝  ╚═╝",
     ]
 
     info = [
-        f"  {C1}fx-verify{C0}  v3.2.0",
-        f"  {DIM}JSONL hash-chain + Ed25519 signature verification{C0}",
+        f"{C1}ForenXtract{C0}",
+        f"{C1}v3.2.0{C0}",
+        f"{DIM}Audit Trail Verifier{C0}",
     ]
 
     print()

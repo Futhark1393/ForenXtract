@@ -465,7 +465,9 @@ class ForensicApp(QMainWindow):
         base_filename = os.path.join(self.output_dir, f"evidence_{self.case_no}_{timestamp_str}")
         self.target_filename = base_filename + ext
         # EwfWriter takes base path without extension; AFF4Writer and RawWriter take full path
-        output_file = base_filename if self.format_type == "E01" else self.target_filename
+        # pyewf/libewf determine segment type from extension (.E01/.E02...).
+        # Always pass a concrete first segment filename for E01.
+        output_file = self.target_filename
 
         # ── UI state ──────────────────────────────────────────────────
         self.btn_start.setEnabled(False)

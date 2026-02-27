@@ -133,16 +133,19 @@ def main() -> int:
     DIM = "\033[2m"      # dim
 
     logo = [
-        f"{C1} ██████╗  ███████╗ ██╗",
-        f"{C1} ██╔══██╗ ██╔════╝ ██║",
-        f"{C1} ██████╔╝ █████╗   ██║",
-        f"{C2} ██╔══██╗ ██╔══╝   ██║",
-        f"{C2} ██║  ██║ ██║      ██║",
-        f"{C2} ╚═╝  ╚═╝ ╚═╝      ╚═╝",
-        f"{DIM} ForenXtract — Remote Forensic Acquisition{C0}",
+        f"{C1} ███████╗  ██╗  ██╗",
+        f"{C1} ██╔════╝  ╚██╗██╔╝",
+        f"{C1} █████╗     ╚███╔╝",
+        f"{C2} ██╔══╝     ██╔██╗",
+        f"{C2} ██║       ██╔╝ ██╗",
+        f"{C2} ╚═╝       ╚═╝  ╚═╝",
     ]
 
     info = [
+        f"{C3}ForenXtract{C0}",
+        f"{C3}v3.2.0{C0}",
+        f"{DIM}Remote Forensic Acquisition{C0}",
+        "",
         f"{C3}Session{C0}   {DIM}{logger.session_id}{C0}",
         f"{C3}Case{C0}      {case_no}",
         f"{C3}Examiner{C0}  {examiner}",
@@ -155,9 +158,9 @@ def main() -> int:
 
     print()
     for i in range(max(len(logo), len(info))):
-        left = logo[i] if i < len(logo) else " " * 24
+        left = logo[i] if i < len(logo) else ""
         right = f"   {info[i]}" if i < len(info) else ""
-        print(f"  {left}{C0}{right}")
+        print(f"  {left}{right}")
     print()
 
     logger.log("CLI acquisition initiated.", "INFO", "ACQUISITION_START", source_module="cli")
@@ -172,7 +175,9 @@ def main() -> int:
     base_filename = os.path.join(output_dir, f"evidence_{case_no}_{timestamp_str}")
     ext = ".E01" if args.format == "E01" else ".raw"
     target_filename = base_filename + ext
-    output_file = base_filename if args.format == "E01" else target_filename
+    # pyewf/libewf determine segment type from extension (.E01/.E02...).
+    # Always pass a concrete first segment filename for E01.
+    output_file = target_filename
 
     # ── Acquire ──────────────────────────────────────────────────────
     try:

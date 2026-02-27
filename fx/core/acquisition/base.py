@@ -157,6 +157,13 @@ class AcquisitionEngine:
         else:
             writer = RawWriter(self.output_file)
 
+        def _safe_close_writer() -> None:
+            try:
+                writer.close()
+            except Exception:
+                # Never mask the primary acquisition failure with a close/finalize error.
+                pass
+
         retries = 0
         success = False
         ssh = None
@@ -246,7 +253,11 @@ class AcquisitionEngine:
                     if ssh and not (success and self.verify_hash):
                         ssh.close()
 
-            writer.close()
+            # In the success path, a close error indicates an invalid/unfinished evidence file.
+            try:
+                writer.close()
+            except Exception as e:
+                raise AcquisitionError(f"Evidence writer finalization failed: {e}") from e
 
             # Post-acquisition hash verification
             remote_sha256 = "SKIPPED"
@@ -280,8 +291,8 @@ class AcquisitionEngine:
             }
 
         except AcquisitionError:
-            writer.close()
+            _safe_close_writer()
             raise
         except Exception as e:
-            writer.close()
+            _safe_close_writer()
             raise AcquisitionError(f"Initialization Error: {e}")
