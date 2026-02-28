@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
 
     # Mode
     p.add_argument("--dead", action="store_true", help="Dead (local) acquisition mode — image a locally attached device")
-    p.add_argument("--source", help="Source device or file for dead acquisition (e.g., /dev/sdb, image.raw)")
+    p.add_argument("--source", help="Source device or folder for dead acquisition (e.g., /dev/sdb, /mnt/evidence/)")
 
     # Live-mode required (not needed for dead)
     p.add_argument("--ip", help="Target IP address (live mode)")

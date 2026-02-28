@@ -148,6 +148,15 @@ fx-acquire --dead \
   --format E01 --verify --write-blocker
 ~~~
 
+For **directory (logical) acquisition**, the source folder is archived via deterministic `tar` and streamed directly to the forensic image:
+
+~~~bash
+fx-acquire --dead \
+  --source /mnt/usb/evidence_folder/ --output-dir ./evidence \
+  --case 2026-001 --examiner "Investigator" \
+  --format RAW --verify
+~~~
+
 ---
 
 # Interface Preview
@@ -161,7 +170,7 @@ The GUI is now organized into a **QTabWidget** with two acquisition modes:
 | Tab | Description |
 |-----|-------------|
 | **Live Acquisition (Remote)** | SSH-based remote disk imaging — target IP, SSH key, remote disk selection, live triage |
-| **Dead Acquisition (Local)** | Local block-device / image-file imaging — auto-detect via lsblk, source image file picker |
+| **Dead Acquisition (Local)** | Local block-device or **folder** (logical) imaging — auto-detect via lsblk, source folder picker |
 
 Shared sections below the tabs:
 
@@ -220,7 +229,9 @@ NEW → CONTEXT_BOUND → ACQUIRING → VERIFYING → SEALED → DONE
 ## Acquisition & Integrity
 
 - SSH-based remote acquisition (pure-Python, headless-testable)
-- **Dead (local) acquisition** — direct block-device / image-file reading via Python I/O
+- **Dead (local) acquisition** — direct block-device reading or **directory (logical) acquisition** via deterministic tar streaming
+- **Privilege elevation** — `pkexec` (polkit GUI) for block-device access and write-blocker (no password in terminal)
+- **Verification progress** — real-time speed, ETA, and percentage during post-acquisition hash verification
 - On-the-fly dual hashing (MD5 + SHA-256)
 - Optional post-acquisition remote SHA-256 verification
 - Safe Mode (`conv=noerror,sync`), write-blocker, throttling
@@ -240,8 +251,8 @@ NEW → CONTEXT_BOUND → ACQUIRING → VERIFYING → SEALED → DONE
 | Parameter | Description |
 |-----------|-------------|
 | *(default)* | **Live mode** — remote acquisition via SSH |
-| `--dead` | **Dead mode** — local block-device / image-file acquisition |
-| `--source PATH` | Source device or file for dead mode (e.g., `/dev/sdb`, `image.raw`) |
+| `--dead` | **Dead mode** — local block-device or directory (logical) acquisition |
+| `--source PATH` | Source device or directory for dead mode (e.g., `/dev/sdb`, `/mnt/evidence/`) |
 
 ### Live Mode Parameters
 
@@ -293,13 +304,22 @@ fx-acquire \
   --siem-host 10.0.0.100 --siem-port 514 --siem-protocol TCP
 ~~~
 
-Example — dead acquisition:
+Example — dead acquisition (block device):
 
 ~~~bash
 fx-acquire --dead \
   --source /dev/sdb --output-dir ./evidence \
   --case 2026-001 --examiner "Investigator" \
   --format RAW+LZ4 --verify --write-blocker
+~~~
+
+Example — dead acquisition (directory / logical):
+
+~~~bash
+fx-acquire --dead \
+  --source /mnt/evidence/user_home/ --output-dir ./evidence \
+  --case 2026-001 --examiner "Investigator" \
+  --format RAW --verify
 ~~~
 
 ## `fx-verify` — Audit Chain Verification
@@ -470,13 +490,13 @@ fx/
 python -m pytest tests/ -v
 ~~~
 
-**132 unit tests** across 3 test modules:
+**146 unit tests** across 3 test modules:
 
 | Module | Tests | Coverage |
 |--------|------:|----------|
 | `test_core.py` | 78 | Session state machine (incl. reset & abort), StreamHasher, RawWriter, LZ4Writer (incl. double-close guard), dd command builder, disk path injection validation, AuditChainVerifier, ForensicLogger (hash chain, sealing, context, syslog integration), Ed25519 signing, SyslogHandler (RFC 5424 + CEF), EwfWriter, AFF4Writer, DependencyChecker, ReportEngine (TXT/PDF + executive summary variants) |
 | `test_triage.py` | 23 | ProcessListCollector (ps parsing, artifact saving, SSH error handling), NetworkStateCollector (all commands, TXT/JSON output, error isolation), MemoryDumpCollector (meminfo, kallsyms, modules, LiME detection), TriageOrchestrator (all collectors, error isolation, directory creation, status callback) |
-| `test_acquisition.py` | 31 | `ssh_exec` (basic/error/unicode), `apply_write_blocker` (success/setro fail/getro fail), `verify_source_hash` (success/fail/exception), AcquisitionEngine (init, stop, progress callback, percentage cap, unavailable format handling via mock for E01/AFF4/LZ4, full RAW acquisition with mock SSH, connection failure + retry), **DeadAcquisitionEngine** (file imaging, hash verification, source-not-found, zero-size, stop/abort, LZ4 format, throttle), `_get_source_size` (regular/empty file), `_apply_local_write_blocker` (success/setro fail/verify fail) |
+| `test_acquisition.py` | 45 | `ssh_exec` (basic/error/unicode), `apply_write_blocker` (success/setro fail/getro fail), `verify_source_hash` (success/fail/exception), AcquisitionEngine (init, stop, progress callback, percentage cap, unavailable format handling via mock for E01/AFF4/LZ4, full RAW acquisition with mock SSH, connection failure + retry), **DeadAcquisitionEngine** (file imaging, hash verification, source-not-found, zero-size, stop/abort, LZ4 format, throttle, **directory acquisition**, **directory verification**, **empty directory error**, **write-blocker skip for dirs**), `_get_source_size` (regular/empty file, **directory walk**), `_is_block_device` (regular file, nonexistent, mock block), `_apply_local_write_blocker` (success/setro fail/verify fail, **pkexec arg verification**), **pkexec elevation** (fallback on PermissionError, cancelled auth, non-block re-raise), **elevated open** (pkexec dd for block devices, tar for directories) |
 
 All optional-dependency tests (pyewf, pyaff4, lz4) use `unittest.mock.patch` to test both available and unavailable code paths regardless of installed packages — **zero skips**.
 
