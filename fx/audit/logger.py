@@ -36,7 +36,12 @@ class ForensicLogger:
 
         self._lock = threading.Lock()
         self.log_file_path = f"temp_audit_{self.session_id}.jsonl"
-        self.prev_hash = hashlib.sha256(b"FORENSIC_GENESIS_BLOCK").hexdigest()
+
+        # Genesis block: combine a fixed domain tag with per-session entropy
+        # so that two sessions never share the same initial chain value.
+        genesis_input = f"FORENSIC_GENESIS_BLOCK:{self.session_id}:{os.urandom(16).hex()}"
+        self.prev_hash = hashlib.sha256(genesis_input.encode("utf-8")).hexdigest()
+
         self._is_sealed = False
         self._syslog = syslog_handler  # optional SyslogHandler
 

@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
+    BestAvailableEncryption,
     NoEncryption,
     PrivateFormat,
     PublicFormat,
@@ -17,9 +18,15 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 
-def generate_signing_keypair(output_dir: str) -> tuple[str, str]:
+def generate_signing_keypair(
+    output_dir: str, passphrase: str | None = None
+) -> tuple[str, str]:
     """
     Generate an Ed25519 keypair and write PEM files to *output_dir*.
+
+    If *passphrase* is provided the private key is encrypted with
+    ``BestAvailableEncryption``; otherwise it is written unencrypted
+    (backward-compat).
 
     Returns (private_key_path, public_key_path).
     """
@@ -29,12 +36,18 @@ def generate_signing_keypair(output_dir: str) -> tuple[str, str]:
     priv_path = os.path.join(output_dir, "fx_signing.key")
     pub_path = os.path.join(output_dir, "fx_signing.pub")
 
+    encryption_algo: BestAvailableEncryption | NoEncryption
+    if passphrase:
+        encryption_algo = BestAvailableEncryption(passphrase.encode("utf-8"))
+    else:
+        encryption_algo = NoEncryption()
+
     with open(priv_path, "wb") as f:
         f.write(
             private_key.private_bytes(
                 encoding=Encoding.PEM,
                 format=PrivateFormat.PKCS8,
-                encryption_algorithm=NoEncryption(),
+                encryption_algorithm=encryption_algo,
             )
         )
     os.chmod(priv_path, 0o600)
@@ -50,9 +63,12 @@ def generate_signing_keypair(output_dir: str) -> tuple[str, str]:
     return priv_path, pub_path
 
 
-def _load_private_key(path: str) -> Ed25519PrivateKey:
+def _load_private_key(
+    path: str, passphrase: str | None = None
+) -> Ed25519PrivateKey:
+    pw_bytes = passphrase.encode("utf-8") if passphrase else None
     with open(path, "rb") as f:
-        key = load_pem_private_key(f.read(), password=None)
+        key = load_pem_private_key(f.read(), password=pw_bytes)
     if not isinstance(key, Ed25519PrivateKey):
         raise TypeError(f"Expected Ed25519 private key, got {type(key).__name__}")
     return key
@@ -66,13 +82,15 @@ def _load_public_key(path: str) -> Ed25519PublicKey:
     return key
 
 
-def sign_audit_trail(audit_file: str, private_key_path: str) -> str:
+def sign_audit_trail(
+    audit_file: str, private_key_path: str, passphrase: str | None = None
+) -> str:
     """
     Sign *audit_file* with the Ed25519 private key at *private_key_path*.
 
     Writes a detached signature to ``<audit_file>.sig`` and returns its path.
     """
-    private_key = _load_private_key(private_key_path)
+    private_key = _load_private_key(private_key_path, passphrase=passphrase)
 
     with open(audit_file, "rb") as f:
         data = f.read()

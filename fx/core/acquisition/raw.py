@@ -12,4 +12,7 @@ class RawWriter:
         self._fh.write(chunk)
 
     def close(self) -> None:
+        import os as _os
+        self._fh.flush()
+        _os.fsync(self._fh.fileno())
         self._fh.close()

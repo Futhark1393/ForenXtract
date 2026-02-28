@@ -43,9 +43,23 @@ class TriageDashboard:
         plt.close(fig)
         return f"data:image/png;base64,{img_base64}"
 
+    @staticmethod
+    def _get_plotly_js() -> str:
+        """Return plotly.js source for inline embedding (air-gapped lab support).
+
+        Uses ``plotly.offline.get_plotlyjs()`` which ships the full JS bundle
+        with the plotly Python package — no CDN required.
+        """
+        try:
+            from plotly.offline import get_plotlyjs
+            return get_plotlyjs()
+        except Exception:
+            # Absolute fallback: empty stub so the HTML still renders (charts won't be interactive)
+            return "/* plotly.js unavailable — install plotly Python package */"
+
     def _plotly_to_html(self, fig: go.Figure) -> str:
-        """Convert plotly figure to embedded HTML div."""
-        return fig.to_html(include_plotlyjs='cdn', div_id=f"plot_{id(fig)}")
+        """Convert plotly figure to embedded HTML div (offline, no CDN)."""
+        return fig.to_html(include_plotlyjs=False, div_id=f"plot_{id(fig)}")
 
     def generate_process_charts(self, processes_json_path: Optional[str]) -> dict:
         """
@@ -335,7 +349,7 @@ class TriageDashboard:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ForenXtract (FX) Triage Dashboard - Case {self.case_no}</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>{self._get_plotly_js()}</script>
     <style>
         * {{
             margin: 0;

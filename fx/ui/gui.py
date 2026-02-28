@@ -35,6 +35,13 @@ from fx.audit.logger import ForensicLogger, ForensicLoggerError
 from fx.report.report_engine import ReportEngine
 from fx.ui.workers import AcquisitionWorker, DeadAcquisitionWorker
 from fx.core.session import Session, SessionState, SessionStateError
+from fx.core.validation import (
+    validate_target_address,
+    validate_ssh_username,
+    validate_signing_key,
+    validate_siem_config,
+    build_evidence_filename,
+)
 
 
 _FORMAT_MAP = {
@@ -433,12 +440,13 @@ class ForensicApp(QMainWindow):
     # ── Validation ────────────────────────────────────────────────────
 
     def validate_network_inputs(self, ip, user):
-        ipv4_re = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-        if not re.match(ipv4_re, ip):
-            QMessageBox.warning(self, "Validation Error", "Invalid IPv4 Address format.")
+        ok, err = validate_target_address(ip)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return False
-        if not re.match(r"^[a-z_][a-z0-9_-]{0,31}$", user):
-            QMessageBox.warning(self, "Validation Error", "Invalid SSH Username format.")
+        ok, err = validate_ssh_username(user)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return False
         return True
 
@@ -628,14 +636,14 @@ class ForensicApp(QMainWindow):
         siem_proto   = self.cmb_siem_protocol.currentText()    if siem_enabled and hasattr(self, "cmb_siem_protocol")  else "UDP"
         siem_cef     = siem_enabled and hasattr(self, "chk_siem_cef") and self.chk_siem_cef.isChecked()
 
-        if siem_enabled and not siem_host:
-            QMessageBox.warning(self, "Validation Error", "SIEM host is required when SIEM forwarding is enabled.")
+        ok, err = validate_signing_key(signing_key)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return
 
-        try:
-            siem_port = int(siem_port_s) if siem_port_s else 514
-        except ValueError:
-            QMessageBox.warning(self, "Validation Error", "SIEM port must be a number.")
+        ok, err, siem_port = validate_siem_config(siem_enabled, siem_host, siem_port_s)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return
 
         # ── Rebuild ForensicLogger with SIEM handler if needed ───────
@@ -653,9 +661,6 @@ class ForensicApp(QMainWindow):
 
         # ── Apply signing key to logger ───────────────────────────────
         if signing_key:
-            if not os.path.isfile(signing_key):
-                QMessageBox.warning(self, "Validation Error", f"Signing key not found:\n{signing_key}")
-                return
             self.logger._signing_key_path = signing_key
             self.log(f"[*] Audit signing key loaded: {os.path.basename(signing_key)}", "INFO", "SIGNING_KEY_SET")
 
@@ -798,14 +803,14 @@ class ForensicApp(QMainWindow):
         siem_proto   = self.cmb_siem_protocol.currentText()    if siem_enabled and hasattr(self, "cmb_siem_protocol")  else "UDP"
         siem_cef     = siem_enabled and hasattr(self, "chk_siem_cef") and self.chk_siem_cef.isChecked()
 
-        if siem_enabled and not siem_host:
-            QMessageBox.warning(self, "Validation Error", "SIEM host is required when SIEM forwarding is enabled.")
+        ok, err = validate_signing_key(signing_key)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return
 
-        try:
-            siem_port = int(siem_port_s) if siem_port_s else 514
-        except ValueError:
-            QMessageBox.warning(self, "Validation Error", "SIEM port must be a number.")
+        ok, err, siem_port = validate_siem_config(siem_enabled, siem_host, siem_port_s)
+        if not ok:
+            QMessageBox.warning(self, "Validation Error", err)
             return
 
         if siem_enabled and siem_host:
@@ -817,9 +822,6 @@ class ForensicApp(QMainWindow):
             self.log(f"[*] SIEM forwarding enabled → {siem_host}:{siem_port} ({siem_proto}{'  CEF' if siem_cef else ''})", "INFO", "SIEM_CONNECTED")
 
         if signing_key:
-            if not os.path.isfile(signing_key):
-                QMessageBox.warning(self, "Validation Error", f"Signing key not found:\n{signing_key}")
-                return
             self.logger._signing_key_path = signing_key
             self.log(f"[*] Audit signing key loaded: {os.path.basename(signing_key)}", "INFO", "SIGNING_KEY_SET")
 

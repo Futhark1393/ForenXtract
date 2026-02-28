@@ -20,6 +20,50 @@ from fx.core.acquisition.verify import verify_source_hash
 from fx.triage.orchestrator import TriageOrchestrator
 
 
+def create_evidence_writer(
+    format_type: str,
+    output_file: str,
+    *,
+    case_number: str = "",
+    examiner_name: str = "",
+    description: str = "",
+    notes: str = "",
+):
+    """Factory: create the appropriate evidence writer for *format_type*.
+
+    Raises AcquisitionError if the required library is missing.
+    """
+    if format_type == "AFF4":
+        if not AFF4_AVAILABLE:
+            raise AcquisitionError(
+                "AFF4 format selected but pyaff4 is not installed.\n"
+                "Install with: pip install pyaff4"
+            )
+        return AFF4Writer(output_file)
+    elif format_type == "E01":
+        if not EWF_AVAILABLE:
+            raise AcquisitionError(
+                "E01 format selected but pyewf/libewf support is not available.\n"
+                "Install system libewf and the Python bindings (pyewf)."
+            )
+        return EwfWriter(
+            output_file,
+            case_number=case_number,
+            examiner_name=examiner_name,
+            description=description,
+            notes=notes,
+        )
+    elif format_type == "RAW+LZ4":
+        if not LZ4_AVAILABLE:
+            raise AcquisitionError(
+                "RAW+LZ4 format selected but lz4 is not installed.\n"
+                "Install with: pip install lz4>=4.0.0"
+            )
+        return LZ4Writer(output_file)
+    else:
+        return RawWriter(output_file)
+
+
 class AcquisitionError(Exception):
     """Raised on unrecoverable acquisition failure."""
     pass
@@ -151,29 +195,10 @@ class AcquisitionEngine:
         start_time = time.time()
 
         # Open evidence writer
-        if self.format_type == "AFF4":
-            if not AFF4_AVAILABLE:
-                raise AcquisitionError(
-                    "AFF4 format selected but pyaff4 is not installed.\n"
-                    "Install with: pip install pyaff4"
-                )
-            writer = AFF4Writer(self.output_file)
-        elif self.format_type == "E01":
-            if not EWF_AVAILABLE:
-                raise AcquisitionError(
-                    "E01 format selected but pyewf/libewf support is not available.\n"
-                    "Install system libewf and the Python bindings (pyewf)."
-                )
-            writer = EwfWriter(self.output_file)
-        elif self.format_type == "RAW+LZ4":
-            if not LZ4_AVAILABLE:
-                raise AcquisitionError(
-                    "RAW+LZ4 format selected but lz4 is not installed.\n"
-                    "Install with: pip install lz4>=4.0.0"
-                )
-            writer = LZ4Writer(self.output_file)
-        else:
-            writer = RawWriter(self.output_file)
+        writer = create_evidence_writer(
+            self.format_type, self.output_file,
+            case_number=self.case_no, examiner_name=self.examiner,
+        )
 
         def _safe_close_writer() -> None:
             try:

@@ -138,6 +138,8 @@ class DeadAcquisitionEngine:
 
         self._is_running = True
         self._elevated_proc: subprocess.Popen | None = None
+        # Bad sector error map (ddrescue-style)
+        self._bad_sectors: list[dict] = []
 
     def stop(self) -> None:
         """Request a graceful stop of the acquisition loop."""
@@ -167,31 +169,43 @@ class DeadAcquisitionEngine:
     # ── Writer factory ──────────────────────────────────────────────
 
     def _create_writer(self):
-        if self.format_type == "AFF4":
-            if not AFF4_AVAILABLE:
-                raise DeadAcquisitionError(
-                    "AFF4 format selected but pyaff4 is not installed.\n"
-                    "Install with: pip install pyaff4"
-                )
-            return AFF4Writer(self.output_file)
-        elif self.format_type == "E01":
-            if not EWF_AVAILABLE:
-                raise DeadAcquisitionError(
-                    "E01 format selected but pyewf/libewf support is not available.\n"
-                    "Install system libewf and the Python bindings (pyewf)."
-                )
-            return EwfWriter(self.output_file)
-        elif self.format_type == "RAW+LZ4":
-            if not LZ4_AVAILABLE:
-                raise DeadAcquisitionError(
-                    "RAW+LZ4 format selected but lz4 is not installed.\n"
-                    "Install with: pip install lz4>=4.0.0"
-                )
-            return LZ4Writer(self.output_file)
-        else:
-            return RawWriter(self.output_file)
+        from fx.core.acquisition.base import create_evidence_writer
+        return create_evidence_writer(
+            self.format_type, self.output_file,
+            case_number=self.case_no, examiner_name=self.examiner,
+        )
 
     # ── Post-acquisition verification ───────────────────────────────
+
+    def _verify_output(self, expected_sha256: str) -> tuple[str, bool | None]:
+        """Re-read the written output file and verify its SHA-256 matches.
+
+        This is the FTK Imager-style “re-verification” step: the image
+        on disk is read back and hashed independently to confirm it was
+        written correctly.
+
+        Returns (output_sha256, match_flag).
+        """
+        import hashlib
+        if not os.path.isfile(self.output_file):
+            return "ERROR", False
+        sha = hashlib.sha256()
+        try:
+            fsize = os.path.getsize(self.output_file)
+            verified = 0
+            start = time.time()
+            with open(self.output_file, "rb") as f:
+                while True:
+                    chunk = f.read(self.CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    sha.update(chunk)
+                    verified += len(chunk)
+                    self._emit_verify_progress(verified, fsize, start)
+            digest = sha.hexdigest()
+            return digest, (digest == expected_sha256)
+        except Exception:
+            return "ERROR", False
 
     def _verify_source(self, target_bytes: int) -> str:
         """Re-read source and compute SHA-256 for verification.
@@ -357,10 +371,14 @@ class DeadAcquisitionEngine:
                     if self.safe_mode:
                         try:
                             chunk = src.read(self.CHUNK_SIZE)
-                        except OSError:
+                        except OSError as _read_err:
                             # Pad unreadable sectors with zeros (forensic safe mode)
-                            # Advance the file offset past the bad region to avoid
-                            # an infinite loop re-reading the same failing sector.
+                            # Log the bad sector range (ddrescue-style error map)
+                            self._bad_sectors.append({
+                                "offset": total_bytes,
+                                "length": self.CHUNK_SIZE,
+                                "error": str(_read_err),
+                            })
                             chunk = b"\x00" * self.CHUNK_SIZE
                             try:
                                 src.seek(self.CHUNK_SIZE, os.SEEK_CUR)
@@ -430,12 +448,39 @@ class DeadAcquisitionEngine:
                 else:
                     hash_match = False
 
+            # Write bad-sector error map if any sectors failed
+            error_map_path = None
+            if self._bad_sectors:
+                import json as _json
+                error_map_path = self.output_file + ".error_map.json"
+                try:
+                    with open(error_map_path, "w", encoding="utf-8") as _emf:
+                        _json.dump({
+                            "source": self.source_path,
+                            "output": self.output_file,
+                            "bad_sector_count": len(self._bad_sectors),
+                            "total_bad_bytes": sum(s["length"] for s in self._bad_sectors),
+                            "sectors": self._bad_sectors,
+                        }, _emf, indent=2)
+                except OSError:
+                    error_map_path = None
+
+            # Post-acquisition output re-verification (re-read written file)
+            output_sha256 = "SKIPPED"
+            output_match = None
+            if self._is_running and self.format_type == "RAW":
+                output_sha256, output_match = self._verify_output(hasher.sha256_hex)
+
             return {
                 "sha256_final": hasher.sha256_hex,
                 "md5_final": hasher.md5_hex,
                 "total_bytes": total_bytes,
                 "source_sha256": source_sha256,
                 "hash_match": hash_match,
+                "bad_sectors": len(self._bad_sectors),
+                "error_map_path": error_map_path,
+                "output_sha256": output_sha256,
+                "output_match": output_match,
             }
 
         except DeadAcquisitionError:

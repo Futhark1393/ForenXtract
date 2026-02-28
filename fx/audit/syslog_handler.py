@@ -139,8 +139,9 @@ class SyslogHandler:
         ]
         extension = " ".join(ext_parts)
 
+        from fx import __version__ as _fx_version
         cef_msg = (
-            f"CEF:0|ForenXtract|ForenXtract|3.4.0|"
+            f"CEF:0|ForenXtract|ForenXtract|{_fx_version}|"
             f"{event_type}|{message}|{cef_severity}|{extension}"
         )
         return cef_msg.encode("utf-8")

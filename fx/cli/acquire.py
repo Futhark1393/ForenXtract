@@ -12,6 +12,7 @@
 
 import argparse
 import os
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,33 @@ from fx.core.acquisition.base import AcquisitionEngine, AcquisitionError
 from fx.core.acquisition.dead import DeadAcquisitionEngine, DeadAcquisitionError
 from fx.audit.logger import ForensicLogger, ForensicLoggerError
 from fx.report.report_engine import ReportEngine
+from fx import __version__ as _fx_version
+
+# Module-level references for SIGINT handler
+_active_engine = None
+_active_logger = None
+_active_signing_key = None
+
+
+def _sigint_handler(signum, frame):
+    """Gracefully stop acquisition on Ctrl+C, seal audit trail, then exit."""
+    global _active_engine, _active_logger, _active_signing_key
+    print("\n\n  [!] SIGINT received — stopping acquisition gracefully...", file=sys.stderr)
+    if _active_engine is not None:
+        _active_engine.stop()
+    # Give the engine a moment to finish its current chunk
+    time.sleep(0.5)
+    if _active_logger is not None:
+        try:
+            _active_logger.log(
+                "Acquisition aborted by user (SIGINT/Ctrl+C).",
+                "WARNING", "ACQUISITION_ABORTED", source_module="cli",
+            )
+            _active_logger.seal_audit_trail(signing_key_path=_active_signing_key)
+            print("  [*] Audit trail sealed despite interruption.", file=sys.stderr)
+        except Exception:
+            pass
+    sys.exit(130)
 
 
 def parse_args() -> argparse.Namespace:
@@ -171,7 +199,7 @@ def main() -> int:
 
     info = [
         f"{C3}ForenXtract{C0}",
-        f"{C3}v3.4.0{C0}",
+        f"{C3}v{_fx_version}{C0}",
         f"{DIM}{'Dead (Local) Acquisition' if is_dead else 'Remote Forensic Acquisition'}{C0}",
         "",
         f"{C3}Session{C0}   {DIM}{logger.session_id}{C0}",
@@ -219,7 +247,11 @@ def main() -> int:
 
     start_time = datetime.now(timezone.utc)
     print(f"\n  Starting {'dead' if is_dead else 'live'} acquisition at {start_time.strftime('%H:%M:%S UTC')}...\n")
-
+    # Install SIGINT handler for graceful Ctrl+C
+    global _active_engine, _active_logger, _active_signing_key
+    _active_logger = logger
+    _active_signing_key = getattr(args, "signing_key", None)
+    signal.signal(signal.SIGINT, _sigint_handler)
     if is_dead:
         engine = DeadAcquisitionEngine(
             source_path=args.source,
@@ -255,6 +287,8 @@ def main() -> int:
             write_blocker=args.write_blocker,
             on_progress=cli_progress,
         )
+
+    _active_engine = engine
 
     try:
         result = engine.run()

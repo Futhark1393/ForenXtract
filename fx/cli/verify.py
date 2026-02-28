@@ -14,6 +14,8 @@ import json
 import os
 import sys
 
+from fx import __version__ as _fx_version
+
 
 def _print_banner() -> None:
     C1 = "\033[1;35m"
@@ -32,7 +34,7 @@ def _print_banner() -> None:
 
     info = [
         f"{C1}ForenXtract{C0}",
-        f"{C1}v3.4.0{C0}",
+        f"{C1}v{_fx_version}{C0}",
         f"{DIM}Audit Trail Verifier{C0}",
     ]
 

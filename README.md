@@ -2,9 +2,34 @@
 
 ![CI](https://github.com/Futhark1393/ForenXtract/actions/workflows/python-ci.yml/badge.svg)
 
-**Author:** Kemal Sebzeci · **Version:** 3.4.0 · **License:** Apache-2.0
+**Author:** Kemal Sebzeci · **Version:** 3.5.0 · **License:** Apache-2.0
 
 ForenXtract (FX) is a **case-first forensic disk acquisition framework** built with **Python + PyQt6**. It supports both **Live (Remote/SSH)** and **Dead (Local)** acquisition through a tabbed interface. It enforces structured forensic workflows through an explicit session state machine, generates a cryptographically hash-chained audit trail (JSONL), and produces TXT/PDF forensic reports.
+
+---
+
+## Changelog — v3.5.0
+
+### HIGH Severity Fixes
+| # | Fix | Module |
+|---|------|--------|
+| 6 | **Bad sector error map** — unreadable sectors logged with offset/length/error, saved as `.error_map.json` | `dead.py` |
+| 7 | **Output re-verification** — written RAW image re-read and SHA-256 compared (FTK Imager-style) | `dead.py` |
+| 8 | **E01 metadata headers** — case number, examiner name, description, notes via `set_header_value()` | `ewf.py` |
+| 9 | **RawWriter fsync** — `flush()` + `os.fsync()` on close to guarantee data persistence | `raw.py` |
+| 10 | **Triage artifact integrity** — every JSON/TXT triage file SHA-256 hashed in the audit trail | `orchestrator.py` |
+
+### MEDIUM Severity Fixes
+| # | Fix | Module |
+|---|------|--------|
+| 11 | **CLI SIGINT handler** — graceful Ctrl+C stops engine, seals audit trail, exits cleanly | `acquire.py` |
+| 12 | **Offline dashboard** — Plotly.js bundled inline (no CDN, air-gapped labs) | `dashboard.py` |
+| 13 | **Version consolidation** — single source of truth `fx.__version__`, replaces all hardcoded strings | `__init__.py`, CLI, syslog |
+| 14 | **IPv6 & hostname support** — GUI validates IPv4, IPv6, and hostnames | `validation.py` |
+| 15 | **Evidence writer factory** — `create_evidence_writer()` eliminates if/elif duplication | `base.py` |
+| 16 | **Shared validation module** — GUI business logic extracted to `fx.core.validation` | `validation.py` |
+| 17 | **Per-session genesis entropy** — genesis block includes `session_id` + `os.urandom(16)` | `logger.py` |
+| 18 | **Signing key passphrase** — private keys can be encrypted with `BestAvailableEncryption` | `signing.py` |
 
 ---
 
@@ -225,24 +250,32 @@ NEW → CONTEXT_BOUND → ACQUIRING → VERIFYING → SEALED → DONE
 ## Tamper-Evident Audit Logging (JSONL)
 
 - Cryptographic chaining (`prev_hash → entry_hash`)
+- **Per-session genesis block** — genesis hash includes `session_id` + `os.urandom` entropy (no two sessions share the same chain root)
 - Forced disk flush (`fsync`) per record
-- Optional **Ed25519 digital signature** (detached `.sig` file)
-- **Optional SIEM/Syslog forwarding** (RFC 5424 UDP/TCP, CEF mode)
+- Optional **Ed25519 digital signature** (detached `.sig` file) — **private keys encrypted with passphrase** (`BestAvailableEncryption`)
+- **Optional SIEM/Syslog forwarding** (RFC 5424 UDP/TCP, CEF mode) — version string sourced from `fx.__version__`
 - **File Protection** — audit trail sealed with `chmod 444` (read-only) + optional `chattr +i` (immutable on Linux ext4/XFS)
 
 ## Acquisition & Integrity
 
 - SSH-based remote acquisition (pure-Python, headless-testable)
 - **Dead (local) acquisition** — direct block-device reading or **directory (logical) acquisition** via deterministic tar streaming
+- **Bad sector error map** — unreadable sectors logged with offset, length, and error message; saved as `.error_map.json` (ddrescue-style)
+- **Output re-verification** — written RAW image is re-read and SHA-256 compared to stream hash (FTK Imager-style)
 - **Privilege elevation** — `pkexec` (polkit GUI) for block-device access and write-blocker (no password in terminal)
 - **Verification progress** — real-time speed, ETA, and percentage during post-acquisition hash verification
 - On-the-fly dual hashing (MD5 + SHA-256)
 - Optional post-acquisition remote SHA-256 verification
 - Safe Mode (`conv=noerror,sync`), write-blocker, throttling
-- **Input validation** — disk paths are validated against injection patterns and shell-quoted (`shlex.quote`)
-- **Graceful stop** — SSH transport is force-closed to interrupt blocking reads immediately
+- **Evidence format factory** — unified `create_evidence_writer()` eliminates if/elif duplication across engines
+- **E01 metadata headers** — case number, examiner name, description, and notes populated via `set_header_value()`
+- **RawWriter fsync** — `flush()` + `os.fsync()` on close to guarantee data reaches disk
+- **Input validation** — disk paths validated against injection patterns and shell-quoted (`shlex.quote`); **IPv6 and hostname** support in GUI
+- **Graceful CLI stop (Ctrl+C)** — SIGINT handler stops engine, seals audit trail, then exits cleanly
+- **Graceful GUI stop** — SSH transport is force-closed to interrupt blocking reads immediately
 - Automatic retry on connection loss (up to 3 retries with resume)
 - Output formats: **RAW**, **RAW+LZ4** (compressed), **E01**, **AFF4** (optional)
+- **Triage artifact integrity** — every triage JSON/TXT file SHA-256 hashed and recorded in the audit trail
 
 ---
 
@@ -367,7 +400,11 @@ In all formats, evidence hash (MD5 + SHA-256) is computed on **raw disk data _be
 ## Generate Signing Keypair
 
 ~~~bash
+# Without passphrase (backward-compatible)
 python -c "from fx.audit.signing import generate_signing_keypair; generate_signing_keypair('.')"
+
+# With passphrase (recommended)
+python -c "from fx.audit.signing import generate_signing_keypair; generate_signing_keypair('.', passphrase='my-secret')"
 ~~~
 
 ---
@@ -415,6 +452,7 @@ If triage is enabled, ForenXtract automatically generates an **interactive HTML 
 Open in any web browser to explore:
 - ✅ Responsive design (mobile/tablet friendly)
 - ✅ Interactive Plotly charts (zoom, pan, hover tooltips)
+- ✅ **Fully offline** — Plotly.js bundled inline (works in air-gapped labs)
 - ✅ Embedded statistics for each analysis
 - ✅ Grouped layout by triage module (Processes, Network, Memory)
 - ✅ Professional styling with case metadata
@@ -445,10 +483,10 @@ fx-acquire \
 ~~~text
 fx/
 ├── cli/                        # Headless CLI tools
-│   ├── acquire.py              # fx-acquire (live + dead modes, no Qt)
+│   ├── acquire.py              # fx-acquire (live + dead modes, SIGINT handler, no Qt)
 │   └── verify.py               # fx-verify (chain + sig verification)
 ├── triage/                     # Live triage collectors (read-only)
-│   ├── orchestrator.py
+│   ├── orchestrator.py         # SHA-256 hashing of all triage artifacts
 │   ├── network.py
 │   ├── processes.py
 │   └── memory.py
@@ -458,19 +496,23 @@ fx/
 ├── core/                       # Business logic (Qt-free, headless-testable)
 │   ├── session.py              # Workflow state machine (NEW → DONE)
 │   ├── hashing.py              # StreamHasher (MD5 + SHA-256)
-│   ├── policy.py              # Write-blocker, dd builder, input validation
+│   ├── policy.py               # Write-blocker, dd builder, input validation
+│   ├── validation.py           # Shared validators (IPv4/IPv6/hostname, SIEM, signing key)
 │   └── acquisition/
-│       ├── base.py             # AcquisitionEngine (live/remote)
-│       ├── dead.py             # DeadAcquisitionEngine (local)
-│       ├── raw.py / ewf.py / aff4.py / lz4_writer.py
+│       ├── base.py             # AcquisitionEngine (live) + create_evidence_writer() factory
+│       ├── dead.py             # DeadAcquisitionEngine (bad sector map, output re-verify)
+│       ├── raw.py              # RawWriter (with fsync)
+│       ├── ewf.py              # EwfWriter (with E01 metadata headers)
+│       ├── aff4.py / lz4_writer.py
 │       └── verify.py
 ├── audit/                      # Tamper-evident logging + signing
-│   ├── logger.py               # ForensicLogger (hash-chained JSONL)
-│   ├── verify.py               # AuditChainVerifier
-│   ├── signing.py              # Ed25519 key gen, sign, verify
+│   ├── logger.py               # ForensicLogger (hash-chained JSONL, per-session genesis)
+│   ├── verify.py               # AuditChainVerifier (dynamic genesis support)
+│   ├── signing.py              # Ed25519 key gen (passphrase-encrypted), sign, verify
 │   └── syslog_handler.py       # RFC 5424 + CEF, UDP/TCP
 └── report/
-    └── report_engine.py        # TXT + PDF forensic reporting
+    ├── report_engine.py        # TXT + PDF forensic reporting
+    └── dashboard.py            # Interactive Plotly dashboard (offline, no CDN)
 ~~~
 
 ---
@@ -480,6 +522,7 @@ fx/
 | File | Description |
 |------|-------------|
 | `evidence_<CASE>_<UTC>.raw` / `.raw.lz4` / `.E01` / `.aff4` | Disk image (RAW, compressed, E01, or AFF4) |
+| `evidence_<CASE>_<UTC>.error_map.json` | Bad sector error map (only if unreadable sectors were encountered) |
 | `AuditTrail_<CASE>_<SESSION>.jsonl` | Tamper-evident audit log |
 | `AuditTrail_<CASE>_<SESSION>.jsonl.sig` | Ed25519 detached signature |
 | `Report_<CASE>_<UTC>.pdf` / `.txt` | Forensic report (includes dashboard reference) |

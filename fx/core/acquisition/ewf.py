@@ -16,7 +16,14 @@ class EwfWriter:
     Raises RuntimeError if pyewf is not installed.
     """
 
-    def __init__(self, filepath: str):
+    def __init__(
+        self,
+        filepath: str,
+        case_number: str = "",
+        examiner_name: str = "",
+        description: str = "",
+        notes: str = "",
+    ):
         if not EWF_AVAILABLE:
             raise RuntimeError(
                 "pyewf is not installed. Cannot write E01 format. "
@@ -30,6 +37,19 @@ class EwfWriter:
         self._handle = pyewf.handle()
         self._handle.open([filepath], "w")
         self._closed = False
+
+        # Populate E01 metadata headers (case_number, examiner_name, etc.)
+        try:
+            if case_number:
+                self._handle.set_header_value("case_number", case_number)
+            if examiner_name:
+                self._handle.set_header_value("examiner_name", examiner_name)
+            if description:
+                self._handle.set_header_value("description", description)
+            if notes:
+                self._handle.set_header_value("notes", notes)
+        except AttributeError:
+            pass  # older pyewf builds may lack set_header_value
 
     def write(self, chunk: bytes) -> None:
         self._handle.write_buffer(chunk)

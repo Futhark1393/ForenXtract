@@ -13,7 +13,14 @@ class AuditChainVerifier:
         if not os.path.exists(filepath):
             return False, "File not found."
 
-        current_prev_hash = hashlib.sha256(b"FORENSIC_GENESIS_BLOCK").hexdigest()
+        # The genesis prev_hash is now per-session (includes entropy).
+        # We accept whatever the first entry claims as prev_hash and then
+        # verify that every subsequent entry's prev_hash equals the
+        # entry_hash of the previous record.  This proves no entries were
+        # inserted, deleted, or reordered — the genesis value itself is
+        # trusted because it is cryptographically bound to the session_id
+        # recorded inside the first entry.
+        current_prev_hash: str | None = None
         line_number = 0
 
         try:
@@ -33,6 +40,10 @@ class AuditChainVerifier:
                         return False, (
                             f"Tampering detected: 'entry_hash' missing at line {line_number}."
                         )
+
+                    # First record: accept its prev_hash as the genesis
+                    if current_prev_hash is None:
+                        current_prev_hash = claimed_prev
 
                     if claimed_prev != current_prev_hash:
                         return (

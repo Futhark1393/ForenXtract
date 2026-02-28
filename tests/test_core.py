@@ -468,13 +468,22 @@ class TestAuditChainVerifier:
             os.unlink(path)
 
     def test_verify_broken_prev_hash(self):
-        """Wrong prev_hash should break the chain."""
+        """Wrong prev_hash on a non-genesis entry should break the chain."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
-            entry = {"message": "test", "prev_hash": "wrong_hash"}
-            entry_json = json.dumps(entry, sort_keys=True)
-            entry_hash = hashlib.sha256(entry_json.encode()).hexdigest()
-            entry["entry_hash"] = entry_hash
-            f.write(json.dumps(entry, sort_keys=True) + "\n")
+            # First entry (genesis) — valid
+            genesis_prev = "abc123"
+            entry1 = {"message": "first", "prev_hash": genesis_prev}
+            entry1_json = json.dumps(entry1, sort_keys=True)
+            entry1_hash = hashlib.sha256(entry1_json.encode()).hexdigest()
+            entry1["entry_hash"] = entry1_hash
+            f.write(json.dumps(entry1, sort_keys=True) + "\n")
+
+            # Second entry with wrong prev_hash
+            entry2 = {"message": "second", "prev_hash": "wrong_hash"}
+            entry2_json = json.dumps(entry2, sort_keys=True)
+            entry2_hash = hashlib.sha256(entry2_json.encode()).hexdigest()
+            entry2["entry_hash"] = entry2_hash
+            f.write(json.dumps(entry2, sort_keys=True) + "\n")
             path = f.name
         try:
             ok, msg = AuditChainVerifier.verify_chain(path)

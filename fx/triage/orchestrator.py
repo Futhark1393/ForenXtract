@@ -3,6 +3,7 @@
 # Each collector is best-effort: a failure in one does not halt others or acquisition.
 
 import os
+import hashlib
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -47,6 +48,20 @@ class TriageOrchestrator:
     def _status(self, msg: str) -> None:
         self._on_status(msg)
 
+    @staticmethod
+    def _hash_file(path: str | None) -> str:
+        """Compute SHA-256 of a file. Returns hex digest or 'UNAVAILABLE'."""
+        if not path or not os.path.isfile(path):
+            return "UNAVAILABLE"
+        sha = hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha.update(chunk)
+            return sha.hexdigest()
+        except OSError:
+            return "UNAVAILABLE"
+
     def run(self, ssh, case_no: str, output_dir: str) -> dict:
         """
         Run all enabled triage collectors.
@@ -90,6 +105,8 @@ class TriageOrchestrator:
                     "status": "OK",
                     "txt_path": result.get("txt_path"),
                     "json_path": result.get("json_path"),
+                    "txt_sha256": self._hash_file(result.get("txt_path")),
+                    "json_sha256": self._hash_file(result.get("json_path")),
                 }
             except Exception as e:
                 summary["collectors"]["network"] = {"status": "ERROR", "error": str(e)}
@@ -115,6 +132,8 @@ class TriageOrchestrator:
                     "process_count": result.get("process_count", 0),
                     "txt_path": result.get("txt_path"),
                     "json_path": result.get("json_path"),
+                    "txt_sha256": self._hash_file(result.get("txt_path")),
+                    "json_sha256": self._hash_file(result.get("json_path")),
                 }
             except Exception as e:
                 summary["collectors"]["processes"] = {"status": "ERROR", "error": str(e)}
@@ -131,6 +150,7 @@ class TriageOrchestrator:
                     "kcore_status": result.get("kcore", {}).get("status", "UNKNOWN"),
                     "lime_device": result.get("lime_device", {}).get("lime_device"),
                     "json_path": result.get("json_path"),
+                    "json_sha256": self._hash_file(result.get("json_path")),
                 }
             except Exception as e:
                 summary["collectors"]["memory"] = {"status": "ERROR", "error": str(e)}
