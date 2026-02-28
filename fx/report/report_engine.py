@@ -1,7 +1,7 @@
 # Author: Futhark1393
 # Description: Report engine for ForenXtract (FX).
 # Features: TXT + PDF forensic reporting with integrity-aware executive summary.
-#           Includes Triage Data Dashboard with interactive visualizations.
+#Includes Triage Data Dashboard with interactive visualizations.
 
 import os
 import warnings

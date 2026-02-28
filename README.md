@@ -425,7 +425,15 @@ fx/
 python -m pytest tests/ -v
 ~~~
 
-28 unit tests covering: session state machine, hashing, RAW writing, LZ4 compression, dd command building, audit chain integrity, Ed25519 signing, report generation.
+**113 unit tests** across 3 test modules:
+
+| Module | Tests | Coverage |
+|--------|------:|----------|
+| `test_core.py` | 70 | Session state machine (incl. reset), StreamHasher, RawWriter, LZ4Writer, dd command builder, AuditChainVerifier, ForensicLogger (hash chain, sealing, context, syslog integration), Ed25519 signing, SyslogHandler (RFC 5424 + CEF), EwfWriter, AFF4Writer, DependencyChecker, ReportEngine (TXT/PDF + executive summary variants) |
+| `test_triage.py` | 22 | ProcessListCollector (ps parsing, artifact saving, SSH error handling), NetworkStateCollector (all commands, TXT/JSON output, error isolation), MemoryDumpCollector (meminfo, kallsyms, modules, LiME detection), TriageOrchestrator (all collectors, error isolation, directory creation, status callback) |
+| `test_acquisition.py` | 21 | `ssh_exec` (basic/error/unicode), `apply_write_blocker` (success/setro fail/getro fail), `verify_source_hash` (success/fail/exception), AcquisitionEngine (init, stop, progress callback, percentage cap, unavailable format handling via mock for E01/AFF4/LZ4, full RAW acquisition with mock SSH, connection failure + retry) |
+
+All optional-dependency tests (pyewf, pyaff4, lz4) use `unittest.mock.patch` to test both available and unavailable code paths regardless of installed packages — **zero skips**.
 
 ---
 
