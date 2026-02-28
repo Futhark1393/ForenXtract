@@ -163,7 +163,7 @@ fx-acquire --dead \
 
 ## v3.4.0 — Tabbed GUI + Dead Acquisition
 
-![ForenXtract v3.4.0 GUI](screenshots/main_ui_v320.png)
+![ForenXtract v3.4.0 GUI](screenshots/main_ui_v340.png)
 
 The GUI is now organized into a **QTabWidget** with two acquisition modes:
 
@@ -182,9 +182,13 @@ Shared sections below the tabs:
 
 ### Workflow Screens
 
-| Case Wizard | Disk Discovery | Acquisition Running |
-|:-----------:|:--------------:|:-------------------:|
-| ![Case Wizard](screenshots/case_wizard.png) | ![Disk Discovery](screenshots/disk_discovery.png) | ![Acquisition](screenshots/acquisition_running.png) |
+| Case Wizard | Disk Discovery | Dead Acquisition Tab |
+|:-----------:|:--------------:|:--------------------:|
+| ![Case Wizard](screenshots/case_wizard.png) | ![Disk Discovery](screenshots/disk_discovery.png) | ![Dead Acquisition](screenshots/dead_acquisition_tab.png) |
+
+| Acquisition Running | Verification Progress |
+|:-------------------:|:---------------------:|
+| ![Acquisition](screenshots/acquisition_running.png) | ![Verification](screenshots/verification_progress.png) |
 
 ### CLI & Reports
 
@@ -386,6 +390,8 @@ Volatile evidence collected **before** acquisition. All operations are strictly 
 # Triage Data Dashboard
 
 **v3.4.0 — Interactive Triage Visualization**
+
+![Triage Dashboard](screenshots/triage_dashboard.png)
 
 If triage is enabled, ForenXtract automatically generates an **interactive HTML dashboard** with real-time visualizations:
 
