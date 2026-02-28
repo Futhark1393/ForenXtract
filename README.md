@@ -360,3 +360,5 @@ python -m pytest tests/ -v
 MIT License — see [LICENSE](LICENSE)
 
 **Author:** Futhark1393
+
+If ForenXtract has been helpful in your investigations, [consider buying me a coffee ☕](https://buymeacoffee.com/futhark) to support ongoing development!
