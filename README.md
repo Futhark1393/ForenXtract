@@ -14,7 +14,7 @@ ForenXtract (FX) is a **case-first forensic disk acquisition framework** built w
 | # | Fix | Module |
 |---|------|--------|
 | 6 | **Bad sector error map** — unreadable sectors logged with offset/length/error, saved as `.error_map.json` | `dead.py` |
-| 7 | **Output re-verification** — written RAW image re-read and SHA-256 compared (FTK Imager-style) | `dead.py` |
+| 7 | **Output re-verification** — written RAW image re-read and SHA-256 compared (FTK Imager-style) | `base.py`, `dead.py` |
 | 8 | **E01 metadata headers** — case number, examiner name, description, notes via `set_header_value()` | `ewf.py` |
 | 9 | **RawWriter fsync** — `flush()` + `os.fsync()` on close to guarantee data persistence | `raw.py` |
 | 10 | **Triage artifact integrity** — every JSON/TXT triage file SHA-256 hashed in the audit trail | `orchestrator.py` |
@@ -261,7 +261,7 @@ NEW → CONTEXT_BOUND → ACQUIRING → VERIFYING → SEALED → DONE
 - SSH-based remote acquisition (pure-Python, headless-testable)
 - **Dead (local) acquisition** — direct block-device reading or **directory (logical) acquisition** via deterministic tar streaming
 - **Bad sector error map** — unreadable sectors logged with offset, length, and error message; saved as `.error_map.json` (ddrescue-style)
-- **Output re-verification** — written RAW image is re-read and SHA-256 compared to stream hash (FTK Imager-style)
+- **Output re-verification** — written RAW image is re-read and SHA-256 compared to stream hash (FTK Imager "Verify After Create") — works on both **Live** and **Dead** acquisition; results logged to console, audit trail, and reports
 - **Privilege elevation** — `pkexec` (polkit GUI) for block-device access and write-blocker (no password in terminal)
 - **Verification progress** — real-time speed, ETA, and percentage during post-acquisition hash verification
 - On-the-fly dual hashing (MD5 + SHA-256)
