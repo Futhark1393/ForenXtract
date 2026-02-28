@@ -198,7 +198,7 @@ class ForensicApp(QMainWindow):
         if hasattr(self, "btn_dead_image"):
             self.btn_dead_image.clicked.connect(self.select_source_image)
 
-        # Mutual exclusion: device dropdown ↔ source file
+        # Mutual exclusion: device dropdown ↔ source folder
         if hasattr(self, "cmb_dead_disk"):
             self.cmb_dead_disk.currentIndexChanged.connect(self._on_dead_device_selected)
         if hasattr(self, "txt_dead_image"):
@@ -317,19 +317,19 @@ class ForensicApp(QMainWindow):
             self.txt_signing_key.setText(fname)
 
     def select_source_image(self):
-        """Open a file picker for dead-acquisition source image."""
-        fname, _ = QFileDialog.getOpenFileName(
-            self, "Select Source Image / File",
+        """Open a directory picker for dead-acquisition source folder."""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Source Folder",
             "",
-            "All Files (*);;Disk Images (*.raw *.img *.dd *.E01 *.aff4 *.raw.lz4)",
+            QFileDialog.Option.ShowDirsOnly,
         )
-        if fname and hasattr(self, "txt_dead_image"):
-            self.txt_dead_image.setText(fname)
+        if folder and hasattr(self, "txt_dead_image"):
+            self.txt_dead_image.setText(folder)
 
     # ── Dead tab: mutual exclusion ────────────────────────────────────
 
     def _on_dead_device_selected(self, index: int) -> None:
-        """When a device is chosen from the dropdown, clear the source file field."""
+        """When a device is chosen from the dropdown, clear the source folder field."""
         if index >= 0 and hasattr(self, "cmb_dead_disk"):
             device_text = self.cmb_dead_disk.currentText().strip()
             if device_text and hasattr(self, "txt_dead_image"):
@@ -338,7 +338,7 @@ class ForensicApp(QMainWindow):
                 self.txt_dead_image.blockSignals(False)
 
     def _on_dead_image_changed(self, text: str) -> None:
-        """When a source file path is entered, deselect the device dropdown."""
+        """When a source folder path is entered, deselect the device dropdown."""
         if text.strip() and hasattr(self, "cmb_dead_disk"):
             self.cmb_dead_disk.blockSignals(True)
             self.cmb_dead_disk.setCurrentIndex(-1)
@@ -724,13 +724,13 @@ class ForensicApp(QMainWindow):
 
     def _start_dead_process(self):
         """Start a dead (local) forensic acquisition."""
-        # Determine source: image file overrides device combo
-        source_image = self.txt_dead_image.text().strip() if hasattr(self, "txt_dead_image") else ""
+        # Determine source: folder/image overrides device combo
+        source_folder = self.txt_dead_image.text().strip() if hasattr(self, "txt_dead_image") else ""
         source_device = self.cmb_dead_disk.currentText().strip() if hasattr(self, "cmb_dead_disk") else ""
-        source_path = source_image or source_device
+        source_path = source_folder or source_device
 
         if not source_path:
-            QMessageBox.warning(self, "Validation Error", "Select a source device or image file.")
+            QMessageBox.warning(self, "Validation Error", "Select a source device or folder.")
             return
 
         if not os.path.exists(source_path):

@@ -687,3 +687,143 @@ class TestOpenSourceElevated:
         with patch("builtins.open", side_effect=PermissionError("denied")):
             with pytest.raises(PermissionError):
                 engine._open_source()
+
+
+class TestDirectoryAcquisition:
+    """Tests for directory-based (logical) dead acquisition via tar streaming."""
+
+    def test_directory_acquisition_basic(self):
+        """Acquiring a directory should produce a valid tar-based evidence file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create source directory with some files
+            src_dir = os.path.join(tmpdir, "evidence_folder")
+            os.makedirs(src_dir)
+            for name, content in [("file_a.txt", b"alpha"), ("file_b.bin", os.urandom(1024))]:
+                with open(os.path.join(src_dir, name), "wb") as f:
+                    f.write(content)
+            # Create a subdirectory too
+            sub = os.path.join(src_dir, "subdir")
+            os.makedirs(sub)
+            with open(os.path.join(sub, "nested.dat"), "wb") as f:
+                f.write(b"nested_content")
+
+            dst = os.path.join(tmpdir, "output.raw")
+            engine = DeadAcquisitionEngine(
+                source_path=src_dir,
+                output_file=dst,
+                format_type="RAW",
+                case_no="DIR-001",
+                examiner="Test",
+            )
+            result = engine.run()
+
+            assert result["total_bytes"] > 0
+            assert len(result["sha256_final"]) == 64
+            assert os.path.exists(dst)
+            # Output should be a valid tar archive
+            import tarfile
+            assert tarfile.is_tarfile(dst)
+            with tarfile.open(dst, "r") as tf:
+                names = tf.getnames()
+                assert any("file_a.txt" in n for n in names)
+                assert any("nested.dat" in n for n in names)
+
+    def test_directory_acquisition_with_verification(self):
+        """Hash verification should work for directory sources (re-tar and compare)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "data.bin"), "wb") as f:
+                f.write(os.urandom(4096))
+
+            dst = os.path.join(tmpdir, "output.raw")
+            engine = DeadAcquisitionEngine(
+                source_path=src_dir,
+                output_file=dst,
+                format_type="RAW",
+                case_no="DIR-002",
+                examiner="Test",
+                verify_hash=True,
+            )
+            result = engine.run()
+
+            assert result["hash_match"] is True
+            assert result["source_sha256"] == result["sha256_final"]
+
+    def test_directory_empty_raises(self):
+        """Empty directory (no files) should raise DeadAcquisitionError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "empty")
+            os.makedirs(src_dir)
+
+            dst = os.path.join(tmpdir, "output.raw")
+            engine = DeadAcquisitionEngine(
+                source_path=src_dir,
+                output_file=dst,
+                format_type="RAW",
+                case_no="DIR-003",
+                examiner="Test",
+            )
+            with pytest.raises(DeadAcquisitionError, match="no files"):
+                engine.run()
+
+    def test_get_source_size_directory(self):
+        """_get_source_size should return total file size sum for directories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "a.txt"), "wb") as f:
+                f.write(b"x" * 100)
+            with open(os.path.join(src_dir, "b.txt"), "wb") as f:
+                f.write(b"y" * 200)
+            sub = os.path.join(src_dir, "sub")
+            os.makedirs(sub)
+            with open(os.path.join(sub, "c.txt"), "wb") as f:
+                f.write(b"z" * 50)
+
+            assert _get_source_size(src_dir) == 350
+
+    def test_open_source_directory_uses_tar(self):
+        """_open_source on a directory should spawn a tar subprocess."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "test.txt"), "w") as f:
+                f.write("hello")
+
+            engine = DeadAcquisitionEngine(
+                source_path=src_dir,
+                output_file="/dev/null",
+                format_type="RAW",
+                case_no="T",
+                examiner="T",
+            )
+            src = engine._open_source()
+            data = src.read()
+            engine._close_source(src)
+            # Should have spawned a subprocess
+            assert engine._elevated_proc is not None
+            engine._elevated_proc.wait()
+            # Data should be a tar stream (starts with the directory name)
+            assert len(data) > 0
+
+    def test_directory_write_blocker_skipped(self):
+        """Write-blocker should be silently skipped for directory sources."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "f.txt"), "wb") as f:
+                f.write(b"data")
+
+            dst = os.path.join(tmpdir, "output.raw")
+            engine = DeadAcquisitionEngine(
+                source_path=src_dir,
+                output_file=dst,
+                format_type="RAW",
+                case_no="DIR-004",
+                examiner="Test",
+                write_blocker=True,  # should be ignored for directories
+            )
+            # Should not raise (write_blocker is skipped for dirs)
+            result = engine.run()
+            assert result["total_bytes"] > 0

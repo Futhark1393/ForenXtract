@@ -180,16 +180,16 @@
            </widget>
           </item>
 
-          <!-- Or: Source Image File -->
+          <!-- Or: Source Folder -->
           <item>
            <widget class="QGroupBox" name="groupBox_dead_image">
-            <property name="title"><string>Or: Source Image / File</string></property>
+            <property name="title"><string>Or: Source Folder (Logical Acquisition)</string></property>
             <layout class="QVBoxLayout" name="verticalLayout_dead_image">
              <item>
               <layout class="QHBoxLayout" name="horizontalLayout_dead_image">
                <item>
                 <widget class="QLineEdit" name="txt_dead_image">
-                 <property name="placeholderText"><string>Path to source image file (overrides device above)</string></property>
+                 <property name="placeholderText"><string>Path to source folder (overrides device above)</string></property>
                 </widget>
                </item>
                <item><widget class="QPushButton" name="btn_dead_image"><property name="text"><string>Browse...</string></property></widget></item>
@@ -197,7 +197,7 @@
              </item>
              <item>
               <widget class="QLabel" name="lbl_dead_image_info">
-               <property name="text"><string>Use this to re-image or convert an existing forensic image (e.g., RAW to E01).</string></property>
+               <property name="text"><string>Select a folder for logical acquisition. Contents are archived (tar) and written to the forensic image.</string></property>
                <property name="wordWrap"><bool>true</bool></property>
                <property name="styleSheet"><string>color: #888; font-style: italic;</string></property>
               </widget>

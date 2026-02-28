@@ -36,11 +36,26 @@ def _is_block_device(path: str) -> bool:
 
 
 def _get_source_size(path: str) -> int:
-    """Return the byte-size of a block device or regular file.
+    """Return the byte-size of a block device, regular file, or directory.
+
+    For directories the total size of all contained files is returned
+    (used as an *approximate* progress target; the actual tar stream
+    will be slightly larger due to headers / padding).
 
     For block devices the function first tries a direct ioctl; if that
     fails with PermissionError it falls back to ``pkexec blockdev --getsize64``.
     """
+    # Directory: walk and sum file sizes
+    if os.path.isdir(path):
+        total = 0
+        for root, _dirs, files in os.walk(path):
+            for fname in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, fname))
+                except OSError:
+                    pass
+        return total
+
     import stat as _stat
     mode = os.stat(path).st_mode
     if _stat.S_ISBLK(mode):
@@ -185,16 +200,31 @@ class DeadAcquisitionEngine:
         try:
             src = self._open_source()
             try:
-                remaining = target_bytes
-                while remaining > 0 and self._is_running:
-                    to_read = min(self.CHUNK_SIZE, remaining)
-                    chunk = src.read(to_read)
-                    if not chunk:
-                        break
-                    sha.update(chunk)
-                    remaining -= len(chunk)
+                if os.path.isdir(self.source_path):
+                    # Directory (tar stream): read until EOF
+                    while self._is_running:
+                        chunk = src.read(self.CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        sha.update(chunk)
+                else:
+                    remaining = target_bytes
+                    while remaining > 0 and self._is_running:
+                        to_read = min(self.CHUNK_SIZE, remaining)
+                        chunk = src.read(to_read)
+                        if not chunk:
+                            break
+                        sha.update(chunk)
+                        remaining -= len(chunk)
             finally:
                 self._close_source(src)
+                # Clean up elevated / tar subprocess
+                if self._elevated_proc is not None:
+                    try:
+                        self._elevated_proc.wait(timeout=5)
+                    except Exception:
+                        self._elevated_proc.kill()
+                    self._elevated_proc = None
             return sha.hexdigest()
         except Exception:
             return "ERROR"
@@ -204,9 +234,25 @@ class DeadAcquisitionEngine:
     def _open_source(self):
         """Open source for reading.  Returns a file-like object.
 
-        For block devices, if direct open fails with PermissionError the
-        method spawns ``pkexec dd`` and returns the process stdout pipe.
+        * **Directory** → ``tar cf -`` (deterministic, sorted) piped to stdout.
+        * **Block device** → direct ``open()``; on PermissionError falls back
+          to ``pkexec dd``.
+        * **Regular file** → direct ``open()``.
         """
+        # Directory: logical acquisition via deterministic tar stream
+        if os.path.isdir(self.source_path):
+            abs_path = os.path.abspath(self.source_path)
+            cmd = [
+                "tar", "cf", "-",
+                "--sort=name",
+                "--numeric-owner",
+                "-C", os.path.dirname(abs_path),
+                os.path.basename(abs_path),
+            ]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self._elevated_proc = proc
+            return proc.stdout
+
         try:
             return open(self.source_path, "rb")
         except PermissionError:
@@ -220,7 +266,6 @@ class DeadAcquisitionEngine:
                 "status=none",
             ]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            # Stash process so we can terminate on stop / close
             self._elevated_proc = proc
             return proc.stdout
 
@@ -254,10 +299,12 @@ class DeadAcquisitionEngine:
             raise DeadAcquisitionError(f"Cannot determine source size: {e}") from e
 
         if target_bytes == 0:
+            if os.path.isdir(self.source_path):
+                raise DeadAcquisitionError("Source directory contains no files.")
             raise DeadAcquisitionError("Source has zero size.")
 
-        # Write-blocker (block devices only)
-        if self.write_blocker:
+        # Write-blocker (block devices only — not applicable to directories)
+        if self.write_blocker and not os.path.isdir(self.source_path):
             self._emit(0, 0.0, "", 0, "Applying Write-Blocker...")
             _apply_local_write_blocker(self.source_path)
 
