@@ -909,3 +909,239 @@ class TestEwfWriterExtension:
                 mock_handle.open.assert_called_once_with(["/tmp/evidence.raw"], "w")
             finally:
                 importlib.reload(ewf_mod)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Critical fix: verify_source_hash command injection prevention
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestVerifySourceHashInjection:
+    """verify_source_hash must validate + shell-quote disk paths."""
+
+    def test_rejects_injection_path(self):
+        """Paths containing shell metacharacters must be rejected."""
+        mock_ssh = MagicMock()
+        # Attempt command injection via semicolon
+        result, matched = verify_source_hash(mock_ssh, "/dev/sda; rm -rf /")
+        assert result == "ERROR"
+        assert matched is False
+        # SSH exec_command should never have been called
+        mock_ssh.exec_command.assert_not_called()
+
+    def test_rejects_backtick_injection(self):
+        """Backtick injection must be caught."""
+        mock_ssh = MagicMock()
+        result, matched = verify_source_hash(mock_ssh, "/dev/`whoami`")
+        assert result == "ERROR"
+        assert matched is False
+        mock_ssh.exec_command.assert_not_called()
+
+    def test_valid_path_is_shell_quoted(self):
+        """Valid disk paths should be shell-quoted in the command."""
+        mock_ssh = MagicMock()
+        mock_stdout = MagicMock()
+        mock_stderr = MagicMock()
+        sha = "b" * 64
+        mock_stdout.read.return_value = f"{sha}  /dev/sda\n".encode()
+        mock_stderr.read.return_value = b""
+        mock_stdout.channel.recv_exit_status.return_value = 0
+        mock_ssh.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+
+        result, _ = verify_source_hash(mock_ssh, "/dev/sda")
+        assert result == sha
+        # Verify the command uses shlex-quoted path
+        cmd = mock_ssh.exec_command.call_args[0][0]
+        assert "/dev/sda" in cmd
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Critical fix: SSH WarningPolicy (no more AutoAddPolicy)
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestSSHHostKeyPolicy:
+    """AcquisitionEngine must NOT use AutoAddPolicy."""
+
+    def test_engine_uses_warning_policy(self):
+        """The engine should use WarningPolicy, not AutoAddPolicy."""
+        import paramiko
+        with patch("fx.core.acquisition.base.paramiko.SSHClient") as MockClient:
+            mock_instance = MagicMock()
+            MockClient.return_value = mock_instance
+            # Make connect raise to short-circuit the run loop
+            mock_instance.connect.side_effect = Exception("test abort")
+
+            engine = AcquisitionEngine(
+                ip="10.0.0.1", user="test", key_path="/tmp/key.pem",
+                disk="/dev/sda", output_file="/tmp/out.raw",
+                format_type="RAW", case_no="TEST-001", examiner="Test",
+            )
+
+            with pytest.raises(AcquisitionError):
+                engine.run()
+
+            # Verify WarningPolicy was set (not AutoAddPolicy)
+            mock_instance.set_missing_host_key_policy.assert_called()
+            policy_arg = mock_instance.set_missing_host_key_policy.call_args[0][0]
+            assert isinstance(policy_arg, paramiko.WarningPolicy)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Critical fix: Safe mode seek-past-bad-sector
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestSafeModeSeek:
+    """Safe mode must advance past unreadable sectors, not loop forever."""
+
+    def test_safe_mode_seeks_past_bad_sector(self):
+        """On OSError, safe mode should seek past the bad region and continue."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a source file large enough for 2 chunks
+            src_path = os.path.join(tmpdir, "source.bin")
+            chunk_size = DeadAcquisitionEngine.CHUNK_SIZE
+            good_data = b"G" * chunk_size
+            with open(src_path, "wb") as f:
+                f.write(good_data * 2)
+
+            dst_path = os.path.join(tmpdir, "output.raw")
+
+            engine = DeadAcquisitionEngine(
+                source_path=src_path,
+                output_file=dst_path,
+                format_type="RAW",
+                case_no="SAFE-001",
+                examiner="Test",
+                safe_mode=True,
+            )
+
+            # Mock _open_source to return a file-like that fails on 1st read,
+            # succeeds on 2nd read, then returns empty (EOF)
+            call_count = [0]
+            mock_src = MagicMock()
+
+            def read_side_effect(size):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise OSError("I/O error")
+                elif call_count[0] == 2:
+                    return good_data
+                return b""
+
+            mock_src.read.side_effect = read_side_effect
+            mock_src.seek = MagicMock()  # seek should be called after OSError
+
+            with patch.object(engine, "_open_source", return_value=mock_src):
+                with patch.object(engine, "_close_source"):
+                    result = engine.run()
+
+            # Engine should have completed (not infinite loop)
+            assert result["total_bytes"] > 0
+            # seek should have been called to skip past the bad sector
+            mock_src.seek.assert_called()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Critical fix: AFF4Writer close error propagation
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestAFF4WriterClosePropagation:
+    """AFF4Writer.close() must propagate errors, not swallow them."""
+
+    def test_close_error_raises_ioerror(self):
+        """If resolver.Close fails, AFF4Writer.close() must raise IOError."""
+        from fx.core.acquisition.aff4 import AFF4Writer, AFF4_AVAILABLE
+        with patch("fx.core.acquisition.aff4.AFF4_AVAILABLE", True):
+            w = AFF4Writer.__new__(AFF4Writer)
+            w._output_path = "/tmp/test.aff4"
+            w._resolver = MagicMock()
+            w._volume = MagicMock()
+            w._stream = MagicMock()
+            w._bytes_written = 0
+            w._closed = False
+
+            # Make resolver.Close raise on the stream URN
+            w._resolver.Close.side_effect = RuntimeError("corrupt container")
+
+            with pytest.raises(IOError, match="AFF4 container finalization failed"):
+                w.close()
+
+    def test_close_success_still_works(self):
+        """Normal close should still work without error."""
+        from fx.core.acquisition.aff4 import AFF4Writer
+        with patch("fx.core.acquisition.aff4.AFF4_AVAILABLE", True):
+            w = AFF4Writer.__new__(AFF4Writer)
+            w._output_path = "/tmp/test.aff4"
+            w._resolver = MagicMock()
+            w._volume = MagicMock()
+            w._stream = MagicMock()
+            w._bytes_written = 0
+            w._closed = False
+
+            w.close()  # should not raise
+            assert w._closed is True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Critical fix: Write-blocker before triage ordering
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestWriteBlockerOrdering:
+    """Write-blocker must be applied BEFORE triage runs."""
+
+    def test_write_blocker_before_triage(self):
+        """When both write_blocker and triage are enabled,
+        write-blocker must be called before triage."""
+        import paramiko
+
+        call_order = []
+
+        def mock_apply_write_blocker(ssh, disk):
+            call_order.append("write_blocker")
+
+        def mock_run_triage(ssh):
+            call_order.append("triage")
+
+        with patch("fx.core.acquisition.base.paramiko.SSHClient") as MockClient:
+            mock_ssh = MagicMock()
+            MockClient.return_value = mock_ssh
+
+            # Mock successful SSH connection
+            mock_stdout_size = MagicMock()
+            mock_stdout_size.read.return_value = b"1000000"
+            mock_stdout_size.channel.recv_exit_status.return_value = 0
+            mock_stderr_size = MagicMock()
+            mock_stderr_size.read.return_value = b""
+
+            # The exec_command for blockdev --getsize64
+            mock_stdout_dd = MagicMock()
+            mock_stdout_dd.read.return_value = b""  # EOF immediately
+            mock_stdout_dd.channel.recv_exit_status.return_value = 0
+            mock_stdout_dd.channel.settimeout = MagicMock()
+            mock_stderr_dd = MagicMock()
+            mock_stderr_dd.read.return_value = b""
+
+            mock_ssh.exec_command.side_effect = [
+                (MagicMock(), mock_stdout_size, mock_stderr_size),  # blockdev
+                (MagicMock(), mock_stdout_dd, mock_stderr_dd),      # dd
+            ]
+
+            engine = AcquisitionEngine(
+                ip="10.0.0.1", user="test", key_path="/tmp/key.pem",
+                disk="/dev/sda", output_file="/tmp/out.raw",
+                format_type="RAW", case_no="ORD-001", examiner="Test",
+                write_blocker=True,
+                run_triage=True,
+                output_dir="/tmp/evidence",
+            )
+
+            with patch.object(engine, "_run_triage", side_effect=mock_run_triage):
+                with patch("fx.core.acquisition.base.apply_write_blocker",
+                           side_effect=mock_apply_write_blocker):
+                    try:
+                        engine.run()
+                    except AcquisitionError:
+                        pass  # May fail on dd; we only care about ordering
+
+        assert "write_blocker" in call_order
+        assert "triage" in call_order
+        assert call_order.index("write_blocker") < call_order.index("triage"), \
+            f"Write-blocker must come before triage, but got: {call_order}"

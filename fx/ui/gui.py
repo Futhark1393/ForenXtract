@@ -461,7 +461,7 @@ class ForensicApp(QMainWindow):
         QApplication.processEvents()
 
         ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
 
         try:
             ssh.connect(ip, username=user, key_filename=key, timeout=10)

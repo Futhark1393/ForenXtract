@@ -359,7 +359,13 @@ class DeadAcquisitionEngine:
                             chunk = src.read(self.CHUNK_SIZE)
                         except OSError:
                             # Pad unreadable sectors with zeros (forensic safe mode)
+                            # Advance the file offset past the bad region to avoid
+                            # an infinite loop re-reading the same failing sector.
                             chunk = b"\x00" * self.CHUNK_SIZE
+                            try:
+                                src.seek(self.CHUNK_SIZE, os.SEEK_CUR)
+                            except (OSError, AttributeError):
+                                pass  # pipes/tar streams are not seekable — offset already moved
                     else:
                         chunk = src.read(self.CHUNK_SIZE)
 

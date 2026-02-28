@@ -189,7 +189,7 @@ class AcquisitionEngine:
         try:
             while self._is_running and retries <= self.MAX_RETRIES:
                 ssh = paramiko.SSHClient()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
                 self._active_ssh = ssh
 
                 try:
@@ -203,16 +203,17 @@ class AcquisitionEngine:
 
                     # One-time preflight
                     if target_bytes == 0:
+                        # Write-blocker FIRST — protect evidence before any triage
+                        if self.write_blocker:
+                            self._emit(0, 0.0, "", 0, "Applying Write-Blocker...")
+                            apply_write_blocker(ssh, self.disk)
+
                         self._run_triage(ssh)
 
                         out, err, code = ssh_exec(ssh, f"sudo -n blockdev --getsize64 {self.disk}")
                         if code != 0 or not out.strip().isdigit():
                             raise AcquisitionError(f"Failed to read disk size. {err}")
                         target_bytes = int(out.strip())
-
-                        if self.write_blocker:
-                            self._emit(0, 0.0, "", 0, "Applying Write-Blocker...")
-                            apply_write_blocker(ssh, self.disk)
 
                     # Start dd
                     command = build_dd_command(self.disk, total_bytes, self.safe_mode)

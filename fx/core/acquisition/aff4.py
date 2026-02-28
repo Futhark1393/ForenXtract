@@ -66,17 +66,21 @@ class AFF4Writer:
         self._bytes_written += len(chunk)
 
     def close(self) -> None:
-        """Flush and close the AFF4 container."""
+        """Flush and close the AFF4 container.
+
+        Raises IOError if the container cannot be finalized properly —
+        a close failure means the evidence file is likely corrupt.
+        """
         if self._closed:
             return
+        self._closed = True
         try:
             if self._stream is not None:
                 self._resolver.Close(self._stream.urn)
             if self._volume is not None:
                 self._resolver.Close(self._volume.urn)
-        except Exception:
-            pass
-        self._closed = True
+        except Exception as e:
+            raise IOError(f"AFF4 container finalization failed: {e}") from e
 
     @property
     def bytes_written(self) -> int:
