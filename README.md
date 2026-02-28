@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Futhark1393/ForenXtract/actions/workflows/python-ci.yml/badge.svg)
 
-**Author:** Futhark1393 · **Version:** 3.3.0 · **License:** MIT
+**Author:** Futhark1393 · **Version:** 3.3.0 · **License:** Apache-2.0
 
 ForenXtract (FX) is a **case-first remote disk acquisition framework** built with **Python + PyQt6**. It enforces structured forensic workflows through an explicit session state machine, generates a cryptographically hash-chained audit trail (JSONL), and produces TXT/PDF forensic reports.
 
@@ -445,7 +445,7 @@ All optional-dependency tests (pyewf, pyaff4, lz4) use `unittest.mock.patch` to 
 
 # License
 
-MIT License — see [LICENSE](LICENSE)
+Apache License 2.0 — see [LICENSE](LICENSE)
 
 **Author:** Futhark1393
 

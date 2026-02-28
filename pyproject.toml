@@ -4,6 +4,7 @@ version = "3.3.0"
 description = "ForenXtract (FX) — case-first remote forensic acquisition tool with structured audit logging and report generation"
 authors = [{ name = "Futhark1393" }]
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 
 dependencies = [
