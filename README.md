@@ -425,12 +425,12 @@ fx-acquire \
 ```
 
 **Output artifacts:**
-- `evidence_2026_001_<UTC>.raw` — Disk image
-- `ProcessList_2026_001_<UTC>.json` — Process data (used for dashboard)
-- `NetworkState_2026_001_<UTC>.json` — Network data (used for dashboard)
-- `MemoryState_2026_001_<UTC>.json` — Memory data (used for dashboard)
-- **`TriageDashboard_2026_001_<UTC>.html`** ← Open this in browser! 📊
-- `Report_2026_001_<UTC>.pdf` — Audit report (includes dashboard reference)
+- `evidence_2026-001_<UTC>.raw` — Disk image
+- `ProcessList_2026-001_<UTC>.json` — Process data (used for dashboard)
+- `NetworkState_2026-001_<UTC>.json` — Network data (used for dashboard)
+- `MemoryState_2026-001_<UTC>.json` — Memory data (used for dashboard)
+- **`TriageDashboard_2026-001_<UTC>.html`** ← Open this in browser! 📊
+- `Report_2026-001_<UTC>.pdf` — Audit report (includes dashboard reference)
 
 ---
 
