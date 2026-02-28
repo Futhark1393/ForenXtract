@@ -143,7 +143,7 @@ fx-acquire \
 
 ## v3.2.0 — LZ4 Compression Support
 
-![ForenXtract v3.2.0 GUI](screenshots/main_ui_v310.png)
+![ForenXtract v3.2.0 GUI](screenshots/main_ui_v320.png)
 
 The GUI now mirrors all CLI capabilities across 6 structured sections:
 
