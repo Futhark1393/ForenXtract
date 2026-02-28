@@ -827,3 +827,85 @@ class TestDirectoryAcquisition:
             # Should not raise (write_blocker is skipped for dirs)
             result = engine.run()
             assert result["total_bytes"] > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# EwfWriter extension-stripping tests
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestEwfWriterExtension:
+    """EwfWriter must strip a pre-existing .E01/.e01 extension before
+    passing the filename to pyewf, because libewf appends segment
+    extensions (.E01, .E02, …) automatically.  Double suffixes like
+    ``evidence.E01.E01`` break Autopsy / EnCase import."""
+
+    def test_strip_e01_extension(self):
+        """EwfWriter should call pyewf.handle().open() with the base name
+        (no .E01) even when the caller provides one."""
+        mock_pyewf = MagicMock()
+        mock_handle = MagicMock()
+        mock_pyewf.handle.return_value = mock_handle
+
+        with patch.dict("sys.modules", {"pyewf": mock_pyewf}):
+            # Reload so the patched module is picked up
+            import importlib
+            import fx.core.acquisition.ewf as ewf_mod
+            importlib.reload(ewf_mod)
+
+            try:
+                writer = ewf_mod.EwfWriter("/tmp/evidence_2026-001.E01")
+                # pyewf.handle().open() should receive the path WITHOUT .E01
+                mock_handle.open.assert_called_once_with(["/tmp/evidence_2026-001"], "w")
+            finally:
+                importlib.reload(ewf_mod)  # restore original module state
+
+    def test_strip_lowercase_e01(self):
+        """Lowercase .e01 extension should also be stripped."""
+        mock_pyewf = MagicMock()
+        mock_handle = MagicMock()
+        mock_pyewf.handle.return_value = mock_handle
+
+        with patch.dict("sys.modules", {"pyewf": mock_pyewf}):
+            import importlib
+            import fx.core.acquisition.ewf as ewf_mod
+            importlib.reload(ewf_mod)
+
+            try:
+                writer = ewf_mod.EwfWriter("/evidence/img.e01")
+                mock_handle.open.assert_called_once_with(["/evidence/img"], "w")
+            finally:
+                importlib.reload(ewf_mod)
+
+    def test_no_extension_passthrough(self):
+        """A filename without an EWF extension should pass through unchanged."""
+        mock_pyewf = MagicMock()
+        mock_handle = MagicMock()
+        mock_pyewf.handle.return_value = mock_handle
+
+        with patch.dict("sys.modules", {"pyewf": mock_pyewf}):
+            import importlib
+            import fx.core.acquisition.ewf as ewf_mod
+            importlib.reload(ewf_mod)
+
+            try:
+                writer = ewf_mod.EwfWriter("/tmp/evidence_case")
+                mock_handle.open.assert_called_once_with(["/tmp/evidence_case"], "w")
+            finally:
+                importlib.reload(ewf_mod)
+
+    def test_raw_extension_not_stripped(self):
+        """A .raw extension should NOT be stripped (only EWF patterns)."""
+        mock_pyewf = MagicMock()
+        mock_handle = MagicMock()
+        mock_pyewf.handle.return_value = mock_handle
+
+        with patch.dict("sys.modules", {"pyewf": mock_pyewf}):
+            import importlib
+            import fx.core.acquisition.ewf as ewf_mod
+            importlib.reload(ewf_mod)
+
+            try:
+                writer = ewf_mod.EwfWriter("/tmp/evidence.raw")
+                mock_handle.open.assert_called_once_with(["/tmp/evidence.raw"], "w")
+            finally:
+                importlib.reload(ewf_mod)
